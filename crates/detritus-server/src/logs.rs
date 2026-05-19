@@ -1,5 +1,6 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
+use chrono::{NaiveDate, Utc};
 use detritus_protocol::{
     GRPC_VERSION_KEY, PROTOCOL_VERSION,
     otlp::{
@@ -10,7 +11,6 @@ use detritus_protocol::{
         },
     },
 };
-use chrono::{NaiveDate, Utc};
 use serde_json::{Value, json};
 use tokio::{
     fs::{File, OpenOptions},
@@ -30,14 +30,18 @@ use crate::{
 const WRITER_CHANNEL_CAPACITY: usize = 10_000;
 
 #[derive(Clone)]
-pub struct LogsHandler {
+pub(crate) struct LogsHandler {
     writers: LogWriterPool,
     rate_limiter: RateLimiter,
     metrics: Metrics,
 }
 
 impl LogsHandler {
-    pub fn new(writers: LogWriterPool, rate_limiter: RateLimiter, metrics: Metrics) -> Self {
+    pub(crate) fn new(
+        writers: LogWriterPool,
+        rate_limiter: RateLimiter,
+        metrics: Metrics,
+    ) -> Self {
         Self {
             writers,
             rate_limiter,
@@ -114,6 +118,7 @@ fn grpc_status_label(code: tonic::Code) -> &'static str {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn validate_protocol_metadata(metadata: &tonic::metadata::MetadataMap) -> Result<(), Status> {
     let version = metadata
         .get(GRPC_VERSION_KEY)
@@ -133,13 +138,13 @@ fn validate_protocol_metadata(metadata: &tonic::metadata::MetadataMap) -> Result
 }
 
 #[derive(Debug, Clone)]
-pub struct LogWriterPool {
+pub(crate) struct LogWriterPool {
     inner: Arc<Mutex<HashMap<SourceKey, WriterHandle>>>,
     storage: StoragePaths,
 }
 
 impl LogWriterPool {
-    pub fn new(storage: StoragePaths) -> Self {
+    pub(crate) fn new(storage: StoragePaths) -> Self {
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
             storage,
@@ -164,7 +169,7 @@ impl LogWriterPool {
         Ok(sender)
     }
 
-    pub async fn shutdown(&self) {
+    pub(crate) async fn shutdown(&self) {
         let handles = {
             let mut writers = self.inner.lock().await;
             writers
@@ -255,6 +260,7 @@ async fn flush_file(file: Option<File>) -> std::io::Result<()> {
     Ok(())
 }
 
+#[allow(clippy::result_large_err)]
 fn source_from_resource_logs(resource_logs: &ResourceLogs) -> Result<SourceKey, Status> {
     let attributes = resource_logs
         .resource
@@ -270,6 +276,7 @@ fn source_from_resource_logs(resource_logs: &ResourceLogs) -> Result<SourceKey, 
         .map_err(|error| Status::invalid_argument(format!("invalid source identity: {error}")))
 }
 
+#[allow(clippy::result_large_err)]
 fn required_attr(attributes: &[KeyValue], key: &'static str) -> Result<String, Status> {
     attributes
         .iter()

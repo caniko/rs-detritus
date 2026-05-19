@@ -1,6 +1,9 @@
+//! Log ingestion smoke tests.
+
 use std::{net::SocketAddr, path::Path};
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
+use chrono::Utc;
 use detritus_protocol::{
     GRPC_VERSION_KEY, PROTOCOL_VERSION,
     otlp::{
@@ -13,13 +16,8 @@ use detritus_protocol::{
     },
 };
 use detritus_server::{
-    ServerConfig,
-    auth::{TestToken, TokenStore},
-    janitor::RetentionConfig,
-    rate_limit::RateLimitConfig,
-    serve_with_shutdown,
+    RateLimitConfig, RetentionConfig, ServerConfig, TestToken, TokenStore, serve_with_shutdown,
 };
-use chrono::Utc;
 use tempfile::TempDir;
 use tokio::{net::TcpListener, sync::oneshot};
 use tonic::{Code, metadata::MetadataValue};

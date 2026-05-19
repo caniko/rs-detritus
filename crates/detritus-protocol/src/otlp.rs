@@ -1,7 +1,12 @@
 //! Curated facade over generated OTLP log protobuf modules.
+//!
+//! This module exposes only the OpenTelemetry Protocol log types Detritus needs
+//! for v0.1.0. Use these bindings when constructing OTLP log export requests
+//! directly; generated package modules remain an implementation detail.
 
 /// Generated OpenTelemetry Protocol log-service types.
-pub mod generated {
+#[allow(unreachable_pub)]
+mod generated {
     /// Package-root modules that match generated prost paths.
     pub mod opentelemetry {
         /// OTLP protobuf namespace.
@@ -9,9 +14,15 @@ pub mod generated {
             /// OTLP common packages.
             pub mod common {
                 /// Version 1 common attribute and value types.
-                #[allow(missing_docs)]
+                #[allow(
+                    missing_docs,
+                    rustdoc::invalid_html_tags,
+                    clippy::all,
+                    clippy::pedantic,
+                    clippy::nursery,
+                    clippy::cargo
+                )]
                 pub mod v1 {
-                    #![allow(rustdoc::invalid_html_tags)]
                     include!(concat!(
                         env!("OUT_DIR"),
                         "/opentelemetry.proto.common.v1.rs"
@@ -22,9 +33,15 @@ pub mod generated {
             /// OTLP resource packages.
             pub mod resource {
                 /// Version 1 resource metadata types.
-                #[allow(missing_docs)]
+                #[allow(
+                    missing_docs,
+                    rustdoc::invalid_html_tags,
+                    clippy::all,
+                    clippy::pedantic,
+                    clippy::nursery,
+                    clippy::cargo
+                )]
                 pub mod v1 {
-                    #![allow(rustdoc::invalid_html_tags)]
                     include!(concat!(
                         env!("OUT_DIR"),
                         "/opentelemetry.proto.resource.v1.rs"
@@ -35,9 +52,15 @@ pub mod generated {
             /// OTLP log packages.
             pub mod logs {
                 /// Version 1 log record and request types.
-                #[allow(missing_docs)]
+                #[allow(
+                    missing_docs,
+                    rustdoc::invalid_html_tags,
+                    clippy::all,
+                    clippy::pedantic,
+                    clippy::nursery,
+                    clippy::cargo
+                )]
                 pub mod v1 {
-                    #![allow(rustdoc::invalid_html_tags)]
                     include!(concat!(env!("OUT_DIR"), "/opentelemetry.proto.logs.v1.rs"));
                 }
             }
@@ -47,9 +70,15 @@ pub mod generated {
                 /// OTLP logs collector packages.
                 pub mod logs {
                     /// Version 1 logs collector service client and server stubs.
-                    #[allow(missing_docs)]
+                    #[allow(
+                        missing_docs,
+                        rustdoc::invalid_html_tags,
+                        clippy::all,
+                        clippy::pedantic,
+                        clippy::nursery,
+                        clippy::cargo
+                    )]
                     pub mod v1 {
-                        #![allow(rustdoc::invalid_html_tags)]
                         include!(concat!(
                             env!("OUT_DIR"),
                             "/opentelemetry.proto.collector.logs.v1.rs"

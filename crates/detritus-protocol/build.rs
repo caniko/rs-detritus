@@ -2,11 +2,8 @@
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let protoc = protoc_bin_vendored::protoc_bin_path()?;
-    // SAFETY: build scripts run single-threaded for this package before code
-    // generation starts, so setting PROTOC here cannot race package code.
-    unsafe {
-        std::env::set_var("PROTOC", protoc);
-    }
+    let mut prost = tonic_build::Config::new();
+    prost.protoc_executable(protoc);
 
     let protos = [
         "proto/opentelemetry/proto/collector/logs/v1/logs_service.proto",
@@ -19,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
         .build_client(true)
         .build_server(true)
-        .compile_protos(&[protos[0]], &includes)?;
+        .compile_protos_with_config(prost, &[protos[0]], &includes)?;
 
     println!("cargo:rerun-if-changed=proto/VERSION");
     for proto in protos {

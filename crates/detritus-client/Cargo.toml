@@ -4,6 +4,14 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "Client SDK for Detritus telemetry and crash reporting"
+keywords = ["observability", "tracing-subscriber", "crash-reporting", "panic-hook", "telemetry"]
+categories = ["development-tools", "network-programming"]
+readme = "README.md"
+documentation = "https://docs.rs/detritus-client"
 
 [features]
 default = ["minidump"]
@@ -17,7 +25,7 @@ path = "src/lib.rs"
 workspace = true
 
 [dependencies]
-detritus-protocol = { path = "../detritus-protocol", features = ["multipart"] }
+detritus-protocol = { path = "../detritus-protocol", version = "0.1.0", features = ["multipart"] }
 
 chrono = { workspace = true, features = ["serde"] }
 flate2 = "1"
@@ -43,5 +51,5 @@ minidumper-child = { version = "0.3", optional = true }
 
 [dev-dependencies]
 argon2 = "0.5"
-detritus-server = { path = "../detritus-server" }
+detritus-server = { path = "../detritus-server", version = "0.1.0" }
 tempfile = "3"

@@ -25,9 +25,9 @@ use crate::{
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug, Serialize)]
-pub struct CrashResponse {
-    pub id: String,
-    pub dedup: bool,
+pub(crate) struct CrashResponse {
+    pub(crate) id: String,
+    pub(crate) dedup: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -55,7 +55,7 @@ struct AttachmentPointer {
     dedup: bool,
 }
 
-pub async fn crashes_handler(
+pub(crate) async fn crashes_handler(
     State(state): State<AppState>,
     Extension(token): Extension<TokenContext>,
     headers: HeaderMap,
@@ -65,7 +65,7 @@ pub async fn crashes_handler(
     let result = crashes_inner(&state, &token, headers, body).await;
     let status = result
         .as_ref()
-        .map_or_else(|error| error.status_code(), |(status, _)| *status);
+        .map_or_else(CrashError::status_code, |(status, _)| *status);
     state
         .metrics
         .observe_request("crashes", status.as_str(), started.elapsed());
@@ -294,7 +294,7 @@ async fn write_index(
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum CrashError {
+pub(crate) enum CrashError {
     #[error("bad request: {0}")]
     BadRequest(String),
     #[error("missing multipart part `{0}`")]

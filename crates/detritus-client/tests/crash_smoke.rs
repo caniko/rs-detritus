@@ -1,3 +1,5 @@
+//! Client panic-hook and crash-shipping smoke tests.
+
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
@@ -9,15 +11,10 @@ use std::{
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use detritus::{
-    PanicHookConfig, PanicKind, SourceId, install_panic_hook, ship_pending_crashes,
+    BuildInfo, PanicHookConfig, PanicKind, SourceId, install_panic_hook, ship_pending_crashes,
 };
-use detritus_protocol::BuildInfo;
 use detritus_server::{
-    ServerConfig,
-    auth::{TestToken, TokenStore},
-    janitor::RetentionConfig,
-    rate_limit::RateLimitConfig,
-    serve_with_shutdown,
+    RateLimitConfig, RetentionConfig, ServerConfig, TestToken, TokenStore, serve_with_shutdown,
 };
 use secrecy::SecretString;
 use serde_json::json;
@@ -31,6 +28,8 @@ const INSTALL_ID: &str = "11111111-1111-1111-1111-111111111111";
 async fn panic_hook_spools_chains_and_ships_next_launch() {
     let server_data = TempDir::new().expect("server data");
     let spool = TempDir::new().expect("spool dir");
+    let context_file = spool.path().join("context.json");
+    std::fs::write(&context_file, br#"{"tick":42}"#).expect("write context file");
     let previous_hook_ran = Arc::new(AtomicBool::new(false));
     let previous_hook_ran_for_hook = Arc::clone(&previous_hook_ran);
     std::panic::set_hook(Box::new(move |_| {
@@ -40,6 +39,7 @@ async fn panic_hook_spools_chains_and_ships_next_launch() {
     install_panic_hook(config(
         "http://127.0.0.1:1".parse().expect("offline endpoint"),
         spool.path().to_path_buf(),
+        context_file,
     ))
     .expect("install hook");
 
@@ -51,6 +51,7 @@ async fn panic_hook_spools_chains_and_ships_next_launch() {
     assert_eq!(pending.len(), 1);
     assert!(pending[0].join("metadata.json").exists());
     assert!(pending[0].join("dump.bin").exists());
+    assert!(pending[0].join("context.json").exists());
 
     let (addr, shutdown, handle) = spawn_server(server_data.path()).await;
     let shipped = ship_pending_crashes(
@@ -103,7 +104,7 @@ async fn spawn_server(
     (addr, shutdown_tx, handle)
 }
 
-fn config(endpoint: url::Url, spool_dir: PathBuf) -> PanicHookConfig {
+fn config(endpoint: url::Url, spool_dir: PathBuf, context_file: PathBuf) -> PanicHookConfig {
     PanicHookConfig {
         endpoint,
         token: SecretString::from("secret-token"),
@@ -116,6 +117,7 @@ fn config(endpoint: url::Url, spool_dir: PathBuf) -> PanicHookConfig {
             target_triple: std::env::consts::ARCH.to_owned(),
         },
         context: json!({"test": "panic_hook_spools_chains_and_ships_next_launch"}),
+        context_files: vec![context_file],
         sent_retention_days: 90,
     }
 }

@@ -1,3 +1,6 @@
+//! Protocol roundtrip smoke tests.
+
+use chrono::Utc;
 use detritus_protocol::{
     AttachmentManifest, BuildInfo, CrashAttachment, CrashEnvelope, CrashKind, CrashMetadata,
     PROTOCOL_VERSION, SourceId,
@@ -6,7 +9,6 @@ use detritus_protocol::{
         logs::LogRecord,
     },
 };
-use chrono::Utc;
 use prost::Message;
 use serde_json::json;
 use uuid::Uuid;

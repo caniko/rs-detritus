@@ -26,29 +26,74 @@ use crate::{
     storage::StoragePaths,
 };
 
+/// Runtime configuration for an embedded Detritus server.
 #[derive(Clone)]
 pub struct ServerConfig {
+    /// Socket address to bind when using [`serve`].
     pub bind: SocketAddr,
+    /// Root directory for logs, crash blobs, indexes, and temporary files.
     pub data_dir: PathBuf,
+    /// Maximum accepted crash dump or attachment size in bytes.
     pub max_dump_bytes: u64,
+    /// Bearer-token store used by HTTP and gRPC authentication.
     pub token_store: TokenStore,
+    /// Per-source and per-token rate limit configuration.
     pub rate_limit: RateLimitConfig,
+    /// Retention policy for logs, crash indexes, and unreferenced blobs.
     pub retention: RetentionConfig,
 }
 
 #[derive(Clone)]
-pub struct AppState {
+pub(crate) struct AppState {
     pub(crate) storage: StoragePaths,
     pub(crate) max_dump_bytes: u64,
     pub(crate) rate_limiter: RateLimiter,
     pub(crate) metrics: Metrics,
 }
 
+/// Runs a Detritus server until the process receives Ctrl-C.
+///
+/// # Errors
+///
+/// Returns an error if binding the listener, preparing storage, initializing
+/// metrics, or serving requests fails.
 pub async fn serve(config: ServerConfig) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let listener = TcpListener::bind(config.bind).await?;
     serve_with_shutdown(listener, config, shutdown_signal()).await
 }
 
+/// Runs a Detritus server on an existing listener until `shutdown` resolves.
+///
+/// # Errors
+///
+/// Returns an error if storage preparation, metrics initialization, listener
+/// inspection, or the HTTP/gRPC server fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// use detritus_server::{
+///     RateLimitConfig, RetentionConfig, ServerConfig, TestToken, TokenStore,
+///     serve_with_shutdown,
+/// };
+/// use tokio::net::TcpListener;
+///
+/// # async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+/// let listener = TcpListener::bind("127.0.0.1:0").await?;
+/// let bind = listener.local_addr()?;
+/// let config = ServerConfig {
+///     bind,
+///     data_dir: std::env::temp_dir().join("detritus"),
+///     max_dump_bytes: 100 * 1024 * 1024,
+///     token_store: TokenStore::for_tests(Vec::<TestToken>::new()),
+///     rate_limit: RateLimitConfig::default(),
+///     retention: RetentionConfig::default(),
+/// };
+///
+/// serve_with_shutdown(listener, config, async {}).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn serve_with_shutdown(
     listener: TcpListener,
     config: ServerConfig,

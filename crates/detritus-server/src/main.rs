@@ -1,12 +1,12 @@
+//! Command-line entry point for the `detritusd` receiver.
+
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
 };
 
-use detritus_server::{
-    ServerConfig, auth::load_security_config, janitor::RetentionConfig, serve,
-};
 use clap::{Parser, ValueEnum};
+use detritus_server::{RetentionConfig, ServerConfig, load_security_config, serve};
 use tracing_subscriber::{EnvFilter, fmt};
 
 #[derive(Debug, Parser)]
@@ -51,6 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let data_dir = absolute_path(&cli.data_dir)?;
     let tokens_config = absolute_path(&cli.tokens_config)?;
+    tracing::info!(path = %tokens_config.display(), "loading token config");
     let security = load_security_config(&tokens_config).await?;
     let config = ServerConfig {
         bind: cli.bind,

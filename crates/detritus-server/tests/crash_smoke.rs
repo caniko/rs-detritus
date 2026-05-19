@@ -1,18 +1,16 @@
+//! Crash ingestion smoke tests.
+
 use std::{net::SocketAddr, path::Path};
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
+use chrono::Utc;
 use detritus_protocol::{
     BuildInfo, CrashEnvelope, CrashKind, CrashMetadata, PROTOCOL_VERSION, SourceId,
     multipart::DEFAULT_BOUNDARY,
 };
 use detritus_server::{
-    ServerConfig,
-    auth::{TestToken, TokenStore},
-    janitor::RetentionConfig,
-    rate_limit::RateLimitConfig,
-    serve_with_shutdown,
+    RateLimitConfig, RetentionConfig, ServerConfig, TestToken, TokenStore, serve_with_shutdown,
 };
-use chrono::Utc;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -143,14 +141,8 @@ async fn crash_smoke_writes_blob_and_source_index_with_dedup() {
 }
 
 async fn post_crash(addr: SocketAddr, dump: Vec<u8>, schema_version: u32) -> serde_json::Value {
-    let response = post_crash_response(
-        addr,
-        dump,
-        schema_version,
-        Some("secret-token"),
-        "detritus",
-    )
-    .await;
+    let response =
+        post_crash_response(addr, dump, schema_version, Some("secret-token"), "detritus").await;
     assert_eq!(response.status(), reqwest::StatusCode::CREATED);
     response.json().await.expect("crash response json")
 }

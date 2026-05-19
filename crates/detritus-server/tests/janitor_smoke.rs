@@ -1,9 +1,8 @@
+//! Retention janitor smoke tests.
+
 use std::{path::Path, time::SystemTime};
 
-use detritus_server::{
-    janitor::{RetentionConfig, run_janitor_cycle},
-    storage::StoragePaths,
-};
+use detritus_server::{RetentionConfig, StoragePaths, run_janitor_cycle};
 use filetime::FileTime;
 use serde_json::json;
 use sha2::{Digest, Sha256};

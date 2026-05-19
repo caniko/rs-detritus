@@ -8,37 +8,42 @@ use serde::Serialize;
 use tokio::fs;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
-pub struct SourceKey {
-    pub project: String,
-    pub source_id: String,
+pub(crate) struct SourceKey {
+    pub(crate) project: String,
+    pub(crate) source_id: String,
 }
 
 impl SourceKey {
-    pub fn new(project: String, source_id: String) -> Result<Self, StorageError> {
+    pub(crate) fn new(project: String, source_id: String) -> Result<Self, StorageError> {
         validate_component("project", &project)?;
         validate_component("source_id", &source_id)?;
         Ok(Self { project, source_id })
     }
 
-    pub fn canonical(&self) -> String {
+    pub(crate) fn canonical(&self) -> String {
         format!("{}/{}", self.project, self.source_id)
     }
 }
 
+#[doc(hidden)]
+/// Hidden storage path helper used by integration tests.
 #[derive(Debug, Clone)]
 pub struct StoragePaths {
     data_dir: PathBuf,
 }
 
 impl StoragePaths {
+    /// Creates storage paths rooted at `data_dir`.
     pub fn new(data_dir: PathBuf) -> Self {
         Self { data_dir }
     }
 
+    /// Returns the storage root directory.
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
     }
 
+    /// Creates the base storage directory tree.
     pub async fn prepare(&self) -> Result<(), StorageError> {
         fs::create_dir_all(self.data_dir.join("logs")).await?;
         fs::create_dir_all(self.data_dir.join("crashes").join("by-hash")).await?;
@@ -47,11 +52,11 @@ impl StoragePaths {
         Ok(())
     }
 
-    pub fn tmp_dir(&self) -> PathBuf {
+    pub(crate) fn tmp_dir(&self) -> PathBuf {
         self.data_dir.join("tmp")
     }
 
-    pub fn log_file(&self, source: &SourceKey, date: NaiveDate) -> PathBuf {
+    pub(crate) fn log_file(&self, source: &SourceKey, date: NaiveDate) -> PathBuf {
         self.data_dir
             .join("logs")
             .join(&source.project)
@@ -59,7 +64,7 @@ impl StoragePaths {
             .join(format!("{date}.ndjson"))
     }
 
-    pub fn blob_path(&self, sha256: &str) -> PathBuf {
+    pub(crate) fn blob_path(&self, sha256: &str) -> PathBuf {
         let prefix = &sha256[..2];
         self.data_dir
             .join("crashes")
@@ -68,7 +73,7 @@ impl StoragePaths {
             .join(format!("{sha256}.bin"))
     }
 
-    pub fn index_path(&self, source: &SourceKey, timestamp: &str, sha256: &str) -> PathBuf {
+    pub(crate) fn index_path(&self, source: &SourceKey, timestamp: &str, sha256: &str) -> PathBuf {
         self.data_dir
             .join("crashes")
             .join("by-source")
@@ -77,20 +82,24 @@ impl StoragePaths {
             .join(format!("{timestamp}-{sha256}.json"))
     }
 
-    pub fn relative_to_data_dir<'a>(&self, path: &'a Path) -> &'a Path {
+    pub(crate) fn relative_to_data_dir<'a>(&self, path: &'a Path) -> &'a Path {
         path.strip_prefix(&self.data_dir).unwrap_or(path)
     }
 }
 
+#[doc(hidden)]
+/// Hidden storage error type used by storage-layout test hooks.
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
+    /// Storage path component was empty or contained path separators.
     #[error("invalid storage path component `{name}`: `{value}`")]
     InvalidComponent { name: &'static str, value: String },
+    /// Filesystem operation failed.
     #[error("storage I/O error: {0}")]
     Io(#[from] io::Error),
 }
 
-pub fn validate_component(name: &'static str, value: &str) -> Result<(), StorageError> {
+pub(crate) fn validate_component(name: &'static str, value: &str) -> Result<(), StorageError> {
     let invalid = value.is_empty()
         || value == "."
         || value == ".."

@@ -17,15 +17,15 @@ use tokio::fs;
 use crate::{metrics::Metrics, rate_limit::RateLimitConfig, storage::SourceKey};
 
 #[derive(Debug, Clone)]
-pub struct TokenContext {
-    pub id: String,
-    pub project: String,
-    pub source_prefix: String,
+pub(crate) struct TokenContext {
+    pub(crate) id: String,
+    pub(crate) project: String,
+    pub(crate) source_prefix: String,
     secret_hash: String,
 }
 
 impl TokenContext {
-    pub fn permits(&self, source: &SourceKey) -> bool {
+    pub(crate) fn permits(&self, source: &SourceKey) -> bool {
         source
             .project
             .as_bytes()
@@ -44,12 +44,14 @@ impl TokenContext {
     }
 }
 
+/// In-memory bearer-token store used by the server.
 #[derive(Debug, Clone)]
 pub struct TokenStore {
     tokens: Arc<Vec<TokenContext>>,
 }
 
 impl TokenStore {
+    /// Loads a token store from a TOML token configuration file.
     pub async fn load(path: &Path) -> Result<Self, AuthConfigError> {
         let raw = fs::read_to_string(path).await?;
         let config: TokensConfig = toml::from_str(&raw)?;
@@ -74,6 +76,7 @@ impl TokenStore {
         })
     }
 
+    /// Creates a token store from pre-hashed entries for tests and harnesses.
     pub fn for_tests(tokens: Vec<TestToken>) -> Self {
         Self {
             tokens: Arc::new(
@@ -90,7 +93,7 @@ impl TokenStore {
         }
     }
 
-    pub fn authenticate(&self, presented: &str) -> Option<TokenContext> {
+    pub(crate) fn authenticate(&self, presented: &str) -> Option<TokenContext> {
         self.tokens
             .iter()
             .find(|token| token.verify(presented))
@@ -98,12 +101,16 @@ impl TokenStore {
     }
 }
 
+/// Security configuration loaded from the token configuration file.
 #[derive(Debug, Clone)]
 pub struct SecurityConfig {
+    /// Bearer-token store used for request authentication.
     pub token_store: TokenStore,
+    /// Per-token and per-source rate limit configuration.
     pub rate_limit: RateLimitConfig,
 }
 
+/// Loads token and rate-limit configuration from a TOML file.
 pub async fn load_security_config(path: &Path) -> Result<SecurityConfig, AuthConfigError> {
     let raw = fs::read_to_string(path).await?;
     let config: TokensConfig = toml::from_str(&raw)?;
@@ -114,11 +121,16 @@ pub async fn load_security_config(path: &Path) -> Result<SecurityConfig, AuthCon
     })
 }
 
+/// Pre-hashed token entry used by embedded tests and local harnesses.
 #[derive(Debug, Clone)]
 pub struct TestToken {
+    /// Token identifier used in logs and rate-limit keys.
     pub id: String,
+    /// Argon2 encoded password hash for the bearer token.
     pub secret_hash: String,
+    /// Project this token may write.
     pub project: String,
+    /// Canonical source prefix this token may write.
     pub source_prefix: String,
 }
 
@@ -137,16 +149,26 @@ struct TokenEntry {
     source_prefix: String,
 }
 
+/// Errors returned while loading security configuration.
 #[derive(Debug, thiserror::Error)]
 pub enum AuthConfigError {
+    /// Token configuration file could not be read.
     #[error("token config I/O error: {0}")]
     Io(#[from] std::io::Error),
+    /// Token configuration file is not valid TOML.
     #[error("token config TOML error: {0}")]
     Toml(#[from] toml::de::Error),
+    /// Token configuration did not contain any token entries.
     #[error("token config contains no tokens")]
     NoTokens,
+    /// Token entry contained an invalid Argon2 hash.
     #[error("token `{id}` has an invalid Argon2 hash: {message}")]
-    InvalidHash { id: String, message: String },
+    InvalidHash {
+        /// Token identifier from the configuration file.
+        id: String,
+        /// Hash parser error message.
+        message: String,
+    },
 }
 
 impl TokenStore {
@@ -174,12 +196,12 @@ impl TokenStore {
 }
 
 #[derive(Clone)]
-pub struct AuthState {
+pub(crate) struct AuthState {
     pub token_store: TokenStore,
     pub metrics: Metrics,
 }
 
-pub async fn auth_middleware(
+pub(crate) async fn auth_middleware(
     State(state): State<AuthState>,
     mut request: Request<Body>,
     next: Next,
@@ -226,7 +248,8 @@ pub async fn auth_middleware(
     next.run(request).await
 }
 
-pub fn token_from_extensions(
+#[allow(clippy::result_large_err)]
+pub(crate) fn token_from_extensions(
     extensions: &axum::http::Extensions,
 ) -> Result<TokenContext, tonic::Status> {
     extensions
@@ -235,7 +258,7 @@ pub fn token_from_extensions(
         .ok_or_else(|| tonic::Status::unauthenticated("missing token context"))
 }
 
-pub fn endpoint_label(path: &str) -> &'static str {
+pub(crate) fn endpoint_label(path: &str) -> &'static str {
     if path == "/v1/crashes" {
         "crashes"
     } else if path == "/opentelemetry.proto.collector.logs.v1.LogsService/Export" {

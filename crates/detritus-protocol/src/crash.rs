@@ -41,7 +41,7 @@ pub enum CrashKind {
 }
 
 /// JSON metadata part for the crash-dump endpoint.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CrashMetadata {
     /// Schema version. New values must match [`PROTOCOL_VERSION`].
     pub schema_version: u32,
@@ -64,7 +64,7 @@ pub struct CrashMetadata {
 impl CrashMetadata {
     /// Creates metadata with the current protocol schema version.
     #[must_use]
-    pub fn new(
+    pub const fn new(
         source: SourceId,
         timestamp: DateTime<Utc>,
         kind: CrashKind,
@@ -90,7 +90,7 @@ impl CrashMetadata {
 /// - `metadata`: `Content-Type: application/json`, payload is [`CrashMetadata`].
 /// - `dump`: `Content-Type: application/octet-stream`, payload is the crash dump.
 /// - `attach:<key>`: optional files declared in [`CrashMetadata::attachments`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CrashEnvelope {
     /// JSON metadata part.
     pub metadata: CrashMetadata,

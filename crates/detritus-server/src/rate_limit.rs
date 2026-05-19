@@ -5,14 +5,19 @@ use tokio::sync::Mutex;
 
 use crate::{auth::TokenContext, storage::SourceKey};
 
+/// Per-token rate limits for log and crash ingestion.
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct RateLimitConfig {
+    /// Sustained log export batches permitted per minute.
     #[serde(default = "default_logs_per_minute")]
     pub logs_per_minute: u32,
+    /// Burst capacity for log export batches.
     #[serde(default = "default_logs_burst")]
     pub logs_burst: u32,
+    /// Sustained crash uploads permitted per minute.
     #[serde(default = "default_crashes_per_minute")]
     pub crashes_per_minute: u32,
+    /// Burst capacity for crash uploads.
     #[serde(default = "default_crashes_burst")]
     pub crashes_burst: u32,
 }
@@ -29,20 +34,20 @@ impl Default for RateLimitConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct RateLimiter {
+pub(crate) struct RateLimiter {
     buckets: Arc<Mutex<HashMap<RateKey, Bucket>>>,
     config: RateLimitConfig,
 }
 
 impl RateLimiter {
-    pub fn new(config: RateLimitConfig) -> Self {
+    pub(crate) fn new(config: RateLimitConfig) -> Self {
         Self {
             buckets: Arc::new(Mutex::new(HashMap::new())),
             config,
         }
     }
 
-    pub async fn check_logs(
+    pub(crate) async fn check_logs(
         &self,
         token: &TokenContext,
         source: &SourceKey,
@@ -57,7 +62,7 @@ impl RateLimiter {
         .await
     }
 
-    pub async fn check_crashes(
+    pub(crate) async fn check_crashes(
         &self,
         token: &TokenContext,
         source: &SourceKey,
@@ -119,7 +124,7 @@ struct Bucket {
 
 #[derive(Debug, Clone, Copy, thiserror::Error)]
 #[error("rate limit exceeded")]
-pub struct RateLimitError;
+pub(crate) struct RateLimitError;
 
 fn default_logs_per_minute() -> u32 {
     1_000

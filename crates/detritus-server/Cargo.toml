@@ -4,6 +4,14 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "Detritus telemetry and crash ingestion server"
+keywords = ["observability", "otlp", "crash-reporting", "server", "telemetry"]
+categories = ["command-line-utilities", "web-programming", "network-programming"]
+readme = "README.md"
+documentation = "https://docs.rs/detritus-server"
 
 [[bin]]
 name = "detritusd"
@@ -13,7 +21,7 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-detritus-protocol = { path = "../detritus-protocol", features = ["multipart"] }
+detritus-protocol = { path = "../detritus-protocol", version = "0.1.0", features = ["multipart"] }
 
 axum = { version = "0.8", features = ["multipart", "http2"] }
 argon2 = "0.5"

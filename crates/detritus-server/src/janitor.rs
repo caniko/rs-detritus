@@ -12,10 +12,14 @@ use crate::{
     storage::StoragePaths,
 };
 
+/// Retention policy for logs, crash indexes, and unreferenced crash blobs.
 #[derive(Debug, Clone, Copy)]
 pub struct RetentionConfig {
+    /// Number of days to keep NDJSON log files.
     pub logs_ttl_days: u64,
+    /// Number of days to keep crash indexes.
     pub crashes_ttl_days: u64,
+    /// Delay between background janitor cycles.
     pub janitor_interval: Duration,
 }
 
@@ -29,15 +33,20 @@ impl Default for RetentionConfig {
     }
 }
 
+/// Files and bytes removed by one janitor cycle.
 #[derive(Debug, Default)]
 pub struct JanitorStats {
+    /// NDJSON log files removed.
     pub logs_deleted: u64,
+    /// Crash index JSON files removed.
     pub indexes_deleted: u64,
+    /// Unreferenced crash blobs removed.
     pub blobs_deleted: u64,
+    /// Total bytes freed from removed files.
     pub bytes_freed: u64,
 }
 
-pub fn spawn_janitor(
+pub(crate) fn spawn_janitor(
     storage: StoragePaths,
     config: RetentionConfig,
     metrics: Metrics,
@@ -65,6 +74,7 @@ pub fn spawn_janitor(
     })
 }
 
+/// Runs one retention pass over the storage tree.
 pub async fn run_janitor_cycle(
     storage: &StoragePaths,
     config: RetentionConfig,
@@ -219,8 +229,11 @@ struct CrashDumpRef {
     sha256: String,
 }
 
+#[doc(hidden)]
+/// Hidden error type returned by the retention test hook.
 #[derive(Debug, thiserror::Error)]
 pub enum JanitorError {
+    /// Filesystem operation failed during retention cleanup.
     #[error("janitor I/O error: {0}")]
     Io(#[from] std::io::Error),
 }

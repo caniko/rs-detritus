@@ -60,6 +60,7 @@ impl SpoolLock {
             .create(true)
             .read(true)
             .write(true)
+            .truncate(false)
             .open(dir.join(".lock"))?;
         file.lock_exclusive()?;
         Ok(Self { file })
@@ -68,6 +69,6 @@ impl SpoolLock {
 
 impl Drop for SpoolLock {
     fn drop(&mut self) {
-        let _ = self.file.unlock();
+        let _ = FileExt::unlock(&self.file);
     }
 }

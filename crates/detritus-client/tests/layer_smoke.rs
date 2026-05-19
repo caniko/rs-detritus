@@ -1,15 +1,13 @@
+//! Client tracing layer smoke tests.
+
 use std::{net::SocketAddr, path::Path, time::Duration};
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
+use chrono::Utc;
 use detritus::{Layer, SourceId};
 use detritus_server::{
-    ServerConfig,
-    auth::{TestToken, TokenStore},
-    janitor::RetentionConfig,
-    rate_limit::RateLimitConfig,
-    serve_with_shutdown,
+    RateLimitConfig, RetentionConfig, ServerConfig, TestToken, TokenStore, serve_with_shutdown,
 };
-use chrono::Utc;
 use secrecy::SecretString;
 use tempfile::TempDir;
 use tokio::{net::TcpListener, sync::oneshot};

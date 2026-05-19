@@ -6,7 +6,7 @@ use prometheus::{
 };
 
 #[derive(Clone)]
-pub struct Metrics {
+pub(crate) struct Metrics {
     inner: Arc<MetricsInner>,
 }
 
@@ -27,7 +27,7 @@ struct MetricsInner {
 }
 
 impl Metrics {
-    pub fn new() -> Result<Self, prometheus::Error> {
+    pub(crate) fn new() -> Result<Self, prometheus::Error> {
         let registry = Registry::new();
         let requests_total = IntCounterVec::new(
             Opts::new(
@@ -106,9 +106,7 @@ impl Metrics {
         registry.register(Box::new(janitor_last_indexes_deleted.clone()))?;
         registry.register(Box::new(janitor_last_blobs_deleted.clone()))?;
 
-        writer_queue_depth
-            .with_label_values(&["none"])
-            .set(0);
+        writer_queue_depth.with_label_values(&["none"]).set(0);
 
         Ok(Self {
             inner: Arc::new(MetricsInner {
@@ -129,7 +127,7 @@ impl Metrics {
         })
     }
 
-    pub fn observe_request(&self, endpoint: &str, status: &str, duration: Duration) {
+    pub(crate) fn observe_request(&self, endpoint: &str, status: &str, duration: Duration) {
         self.inner
             .requests_total
             .with_label_values(&[endpoint, status])
@@ -140,25 +138,30 @@ impl Metrics {
             .observe(duration.as_secs_f64());
     }
 
-    pub fn observe_bytes(&self, endpoint: &str, bytes: u64) {
+    pub(crate) fn observe_bytes(&self, endpoint: &str, bytes: u64) {
         self.inner
             .bytes_ingested_total
             .with_label_values(&[endpoint])
             .inc_by(bytes);
     }
 
-    pub fn observe_dedup_hit(&self) {
+    pub(crate) fn observe_dedup_hit(&self) {
         self.inner.dedup_hits_total.inc();
     }
 
-    pub fn set_writer_queue_depth(&self, source_id: &str, depth: i64) {
+    pub(crate) fn set_writer_queue_depth(&self, source_id: &str, depth: i64) {
         self.inner
             .writer_queue_depth
             .with_label_values(&[source_id])
             .set(depth);
     }
 
-    pub fn observe_janitor(&self, result: &str, duration: Duration, stats: &JanitorMetricStats) {
+    pub(crate) fn observe_janitor(
+        &self,
+        result: &str,
+        duration: Duration,
+        stats: &JanitorMetricStats,
+    ) {
         self.inner.janitor_cycles_total.inc();
         self.inner
             .janitor_blobs_freed_total
@@ -181,7 +184,7 @@ impl Metrics {
             .set(stats.blobs_deleted as i64);
     }
 
-    pub fn render(&self) -> Result<String, prometheus::Error> {
+    pub(crate) fn render(&self) -> Result<String, prometheus::Error> {
         let encoder = TextEncoder::new();
         let families = self.inner.registry.gather();
         let mut bytes = Vec::new();
@@ -193,9 +196,9 @@ impl Metrics {
 }
 
 #[derive(Debug, Default)]
-pub struct JanitorMetricStats {
-    pub logs_deleted: u64,
-    pub indexes_deleted: u64,
-    pub blobs_deleted: u64,
-    pub bytes_freed: u64,
+pub(crate) struct JanitorMetricStats {
+    pub(crate) logs_deleted: u64,
+    pub(crate) indexes_deleted: u64,
+    pub(crate) blobs_deleted: u64,
+    pub(crate) bytes_freed: u64,
 }

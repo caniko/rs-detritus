@@ -1,9 +1,14 @@
-use std::{backtrace::Backtrace, fs, io, panic::PanicHookInfo, path::PathBuf, sync::Arc};
-
-use detritus_protocol::{
-    AttachmentManifest, BuildInfo, CrashKind, CrashMetadata, SourceId,
+use std::{
+    backtrace::Backtrace,
+    ffi::OsStr,
+    fs, io,
+    panic::PanicHookInfo,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
+
 use chrono::Utc;
+use detritus_protocol::{AttachmentManifest, BuildInfo, CrashKind, CrashMetadata, SourceId};
 use flate2::{Compression, write::GzEncoder};
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
@@ -33,6 +38,8 @@ pub struct PanicHookConfig {
     pub build: BuildInfo,
     /// Extra JSON context stored in crash reports.
     pub context: serde_json::Value,
+    /// Extra files copied into each crash entry as attachments.
+    pub context_files: Vec<PathBuf>,
     /// Number of days to retain successfully sent entries locally.
     pub sent_retention_days: u64,
 }
@@ -141,6 +148,8 @@ fn write_pending_crash(config: &PanicHookConfig, info: &PanicHookInfo<'_>) -> io
             .map(|bytes| bytes.len() as u64)
             .unwrap_or(0),
     });
+    let context_attachments = copy_context_files(config, &dir)?;
+    metadata.attachments.extend(context_attachments);
 
     fs::write(
         dir.join("metadata.json"),
@@ -168,6 +177,9 @@ fn write_pending_minidump(config: &PanicHookConfig, dump: &[u8]) -> io::Result<(
         config.build.clone(),
         config.context.clone(),
     );
+    let mut metadata = metadata;
+    let context_attachments = copy_context_files(config, &dir)?;
+    metadata.attachments.extend(context_attachments);
     fs::write(
         dir.join("metadata.json"),
         serde_json::to_vec_pretty(&metadata)
@@ -180,6 +192,31 @@ fn write_pending_minidump(config: &PanicHookConfig, dump: &[u8]) -> io::Result<(
             .map_err(|error| io::Error::other(error.to_string()))?,
     )?;
     Ok(())
+}
+
+fn copy_context_files(config: &PanicHookConfig, dir: &Path) -> io::Result<Vec<AttachmentManifest>> {
+    config
+        .context_files
+        .iter()
+        .enumerate()
+        .map(|(index, path)| copy_context_file(index, path, dir))
+        .collect()
+}
+
+fn copy_context_file(index: usize, path: &Path, dir: &Path) -> io::Result<AttachmentManifest> {
+    let filename = path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| format!("context-{index}.json"));
+    let bytes = fs::read(path)?;
+    fs::write(dir.join(&filename), &bytes)?;
+    Ok(AttachmentManifest {
+        key: format!("context-{index}"),
+        filename: Some(filename),
+        content_type: "application/json".to_owned(),
+        len: bytes.len() as u64,
+    })
 }
 
 fn panic_text(info: &PanicHookInfo<'_>) -> String {

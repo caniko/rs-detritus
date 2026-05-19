@@ -28,14 +28,16 @@
 //! # drop(layer);
 //! ```
 
-#![warn(missing_docs)]
-
 mod layer;
 mod panic_hook;
 mod shipper;
 mod spool;
 
-pub use detritus_protocol::SourceId;
+/// Build metadata type re-exported for panic-hook configuration.
+pub use detritus_protocol::{BuildInfo, SourceId};
+/// Tracing subscriber layer API.
 pub use layer::{Layer, LayerBuilder, LayerError};
+/// Panic-hook crash capture API.
 pub use panic_hook::{PanicHookConfig, PanicHookError, PanicKind, install_panic_hook};
+/// Offline crash spool shipping API.
 pub use shipper::{ShipError, ship_pending_crashes};
