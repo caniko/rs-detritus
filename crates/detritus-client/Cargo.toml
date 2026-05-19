@@ -1,0 +1,12 @@
+[package]
+name = "detritus-client"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "detritus"
+path = "src/lib.rs"
+
+[dependencies]
