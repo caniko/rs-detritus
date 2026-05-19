@@ -48,6 +48,16 @@ assert_eq!(metadata.schema_version, PROTOCOL_VERSION);
 With the default `multipart` feature enabled, `CrashEnvelope` can also encode and decode
 multipart crash uploads through async readers and writers.
 
+## Examples
+
+- [`crash_envelope`](examples/crash_envelope.rs) - construct a crash envelope and serialize it as a multipart upload.
+
+Run with:
+
+```sh
+cargo run --example crash_envelope -p detritus-protocol
+```
+
 ## Feature flags
 
 | Feature | Default | Effect |

@@ -47,6 +47,16 @@ serve_with_shutdown(listener, config, async {}).await?;
 Production deployments should load real token configuration with `load_security_config` rather
 than constructing a test token store.
 
+## Examples
+
+- [`embed_server`](examples/embed_server.rs) - bind an embedded receiver on a kernel-assigned local port and shut it down.
+
+Run with:
+
+```sh
+cargo run --example embed_server -p detritus-server
+```
+
 ## Feature flags
 
 This crate currently has no optional Cargo features.

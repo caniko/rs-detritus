@@ -77,6 +77,16 @@ install_panic_hook(PanicHookConfig {
 }).unwrap();
 ```
 
+## Examples
+
+- [`install_layer`](examples/install_layer.rs) - install the tracing layer and emit example events.
+
+Run with:
+
+```sh
+cargo run --example install_layer -p detritus-client
+```
+
 ## Feature flags
 
 | Feature | Default | Effect |

@@ -1,4 +1,12 @@
 /target/
+**/target/
 /.direnv/
 /.envrc
 *.log
+*.swp
+*.swo
+.vscode/
+.idea/
+.DS_Store
+result
+result-*
