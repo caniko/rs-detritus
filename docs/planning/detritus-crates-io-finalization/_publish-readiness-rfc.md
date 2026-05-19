@@ -9,7 +9,7 @@ External facts checked on 2026-05-19:
 
 - crates.io package API returned "does not exist" for `detritus-protocol`, `detritus-client`, and `detritus-server`.
 - crates.io category API was used for category slugs. The current taxonomy exposes `development-tools` and `web-programming`; it does not expose `development-tools::debugging` or `web-programming::http-server`.
-- The official EUPL-1.2 page identifies SPDX `EUPL-1.2` and its compatible-license appendix.
+- The Apache-2.0 SPDX identifier matches the nixpkgs `asl20` license attribute (shortName `Apache-2.0`).
 - The Rust 1.85.0 release announcement states that Rust 2024 was stabilized in Rust 1.85.0.
 
 ## Workspace inventory
@@ -20,21 +20,21 @@ External facts checked on 2026-05-19:
 | client | `detritus-client` | `detritus` | 0.1.0 | 2024 | `MIT OR Apache-2.0` | 5 / 992 | `tests/crash_smoke.rs`, `tests/layer_smoke.rs` | no | yes | none | `SourceId`, `Layer`, `LayerBuilder`, `LayerError`, `PanicHookConfig`, `PanicHookError`, `PanicKind`, `install_panic_hook`, `ShipError`, `ship_pending_crashes` | 20 normal/target, 3 dev | `detritus-protocol`, dev `detritus-server` |
 | server | `detritus-server` | `detritus_server` | 0.1.0 | 2024 | `MIT OR Apache-2.0` | 10 / 1,875 | `tests/crash_smoke.rs`, `tests/janitor_smoke.rs`, `tests/logs_smoke.rs`, `tests/rate_limit_smoke.rs` | `detritusd` | no | `auth`, `crashes`, `janitor`, `logs`, `metrics`, `rate_limit`, `server`, `storage` | `ServerConfig`, `serve`, `serve_with_shutdown` | 24 normal, 3 dev | `detritus-protocol` |
 
-Phase 02 changes the workspace license to `EUPL-1.2`. Phase 03 adds publish metadata and `version = "0.1.0"` qualifiers to publish-bound path dependencies.
+Phase 02 consolidates the workspace license to `Apache-2.0` and ships the canonical text at `LICENSE`. Phase 03 adds publish metadata and `version = "0.1.0"` qualifiers to publish-bound path dependencies.
 
 ## Per-crate publish decisions
 
 ### `detritus-protocol`: PUBLISH-v0.1.0
 
-Persona: Rust developers implementing Detritus-compatible clients, test fixtures, or ingestion services that need shared wire types. The crash schema and `SourceId` model are already the shared contract between client and server, and the OTLP facade is required by sibling crates. The API is stable enough for a v0.x release if Phase 04 hides generated internals behind curated modules and commits only the listed schema/configuration items. No direct dependency license blocks publication under EUPL-1.2.
+Persona: Rust developers implementing Detritus-compatible clients, test fixtures, or ingestion services that need shared wire types. The crash schema and `SourceId` model are already the shared contract between client and server, and the OTLP facade is required by sibling crates. The API is stable enough for a v0.x release if Phase 04 hides generated internals behind curated modules and commits only the listed schema/configuration items. All resolved dep licenses are permissive — no publication blockers. (Apache-2.0 is itself permissive; consuming any combination of permissive or copyleft deps is unrestricted.)
 
 ### `detritus-client`: PUBLISH-v0.1.0
 
-Persona: application developers who want `cargo add detritus-client` and then install a `tracing-subscriber` layer plus a panic/crash hook. The crate already documents a narrow public API in `src/lib.rs`, and most implementation modules are private. The current surface is acceptable for v0.1.0 once per-crate metadata, README, changelog, and dependency version qualifiers are added. No direct dependency license blocks publication under EUPL-1.2.
+Persona: application developers who want `cargo add detritus-client` and then install a `tracing-subscriber` layer plus a panic/crash hook. The crate already documents a narrow public API in `src/lib.rs`, and most implementation modules are private. The current surface is acceptable for v0.1.0 once per-crate metadata, README, changelog, and dependency version qualifiers are added. All resolved dep licenses are permissive — no publication blockers. (Apache-2.0 is itself permissive; consuming any combination of permissive or copyleft deps is unrestricted.)
 
 ### `detritus-server`: PUBLISH-v0.1.0
 
-Persona: operators and developers who want `cargo install detritus-server` to run `detritusd`, plus advanced users embedding the server in tests or local tooling. Publishing the binary crate is useful distribution, but its library surface is currently too wide because all implementation modules are `pub mod`. Phase 04 must narrow it to configuration and serving entry points before publish. No direct dependency license blocks publication under EUPL-1.2.
+Persona: operators and developers who want `cargo install detritus-server` to run `detritusd`, plus advanced users embedding the server in tests or local tooling. Publishing the binary crate is useful distribution, but its library surface is currently too wide because all implementation modules are `pub mod`. Phase 04 must narrow it to configuration and serving entry points before publish. All resolved dep licenses are permissive — no publication blockers. (Apache-2.0 is itself permissive; consuming any combination of permissive or copyleft deps is unrestricted.)
 
 ## Crate names + fallbacks
 
@@ -168,11 +168,11 @@ Feature-flag philosophy:
 - Disabling default features is allowed to remove optional transport/crash-capture helpers, but not shared schema types or core builder configuration.
 - Feature changes that remove a public item, change default behavior, or alter dependency MSRV are breaking during v0.x.
 
-## EUPL-1.2 dependency-license audit
+## Apache-2.0 dependency-license sanity check
 
-Compatibility rule used here: EUPL-1.2 covers Detritus' own source after Phase 02. Direct dependencies under permissive licenses such as MIT, Apache-2.0, BSD-3-Clause, ISC, 0BSD, Unlicense, and MPL-2.0 are compatible to consume. The EUPL-1.2 appendix additionally lists GPL/AGPL/OSL/EPL/CeCILL/LGPL/MPL/EUPL/LiLiQ families as compatible licenses for derivative-work relicensing. No direct dependency below is GPL or otherwise exotic.
+Compatibility rule used here: Apache-2.0 covers Detritus' own source after Phase 02. Apache-2.0 is permissive, so any combination of permissive or copyleft direct dependencies is compatible to consume — the published `.crate` archives contain only Detritus's own source. The table below is recorded for visibility (and to flag any `UNKNOWN`/proprietary entries that would need investigation before publish). No direct dependency below is exotic or unknown.
 
-| Crate | Dependency | Kind / target | SPDX license from cargo metadata | EUPL-1.2 verdict |
+| Crate | Dependency | Kind / target | SPDX license from cargo metadata | Publish verdict |
 |---|---|---|---|---|
 | `detritus-protocol` | `bytes` | optional normal | `MIT` | compatible |
 | `detritus-protocol` | `chrono` | normal | `MIT OR Apache-2.0` | compatible |
@@ -187,7 +187,7 @@ Compatibility rule used here: EUPL-1.2 covers Detritus' own source after Phase 0
 | `detritus-protocol` | `uuid` | normal | `Apache-2.0 OR MIT` | compatible |
 | `detritus-protocol` | `protoc-bin-vendored` | build | `MIT` | compatible |
 | `detritus-protocol` | `tonic-build` | build | `MIT` | compatible |
-| `detritus-client` | `detritus-protocol` | path normal | workspace license, Phase 02 `EUPL-1.2` | compatible; add `version = "0.1.0"` before publish |
+| `detritus-client` | `detritus-protocol` | path normal | workspace license, Phase 02 `Apache-2.0` | compatible; add `version = "0.1.0"` before publish |
 | `detritus-client` | `chrono` | normal | `MIT OR Apache-2.0` | compatible |
 | `detritus-client` | `flate2` | normal | `MIT OR Apache-2.0` | compatible |
 | `detritus-client` | `fs2` | normal | `MIT/Apache-2.0` | compatible |
@@ -208,9 +208,9 @@ Compatibility rule used here: EUPL-1.2 covers Detritus' own source after Phase 0
 | `detritus-client` | `uuid` | normal | `Apache-2.0 OR MIT` | compatible |
 | `detritus-client` | `minidumper-child` | optional target `cfg(not(target_os = "android"))` | `MIT OR Apache-2.0` | compatible |
 | `detritus-client` | `argon2` | dev | `MIT OR Apache-2.0` | compatible |
-| `detritus-client` | `detritus-server` | path dev | workspace license, Phase 02 `EUPL-1.2` | compatible; dev-only, no publish qualifier required |
+| `detritus-client` | `detritus-server` | path dev | workspace license, Phase 02 `Apache-2.0` | compatible; dev-only, no publish qualifier required |
 | `detritus-client` | `tempfile` | dev | `MIT OR Apache-2.0` | compatible |
-| `detritus-server` | `detritus-protocol` | path normal | workspace license, Phase 02 `EUPL-1.2` | compatible; add `version = "0.1.0"` before publish |
+| `detritus-server` | `detritus-protocol` | path normal | workspace license, Phase 02 `Apache-2.0` | compatible; add `version = "0.1.0"` before publish |
 | `detritus-server` | `argon2` | normal | `MIT OR Apache-2.0` | compatible |
 | `detritus-server` | `axum` | normal | `MIT` | compatible |
 | `detritus-server` | `bytes` | normal | `MIT` | compatible |
@@ -244,7 +244,7 @@ Publish `detritus-server` as a binary crate at v0.1.0. The server is useful as a
 
 ## CI policy + release cadence
 
-CI runs on Codeberg/Forgejo using the project convention for hosted or self-hosted runners. The minimum required gate is `cargo fmt --check`, `cargo clippy --workspace --all-targets --all-features`, `cargo test --workspace --all-features`, `cargo doc --workspace --all-features --no-deps`, and `cargo publish --dry-run` for each publish-bound crate in dependency order. Once Phase 02 lands, CI must also check that package metadata uses `EUPL-1.2`.
+CI runs on Codeberg/Forgejo using the project convention for hosted or self-hosted runners. The minimum required gate is `cargo fmt --check`, `cargo clippy --workspace --all-targets --all-features`, `cargo test --workspace --all-features`, `cargo doc --workspace --all-features --no-deps`, and `cargo publish --dry-run` for each publish-bound crate in dependency order. Once Phase 02 lands, CI must also check that package metadata uses `Apache-2.0`.
 
 Releases are manual and tag-driven. A maintainer creates a changelog entry, tags `vX.Y.Z`, runs dry-runs locally or in CI, publishes in dependency order (`detritus-protocol`, `detritus-client`, `detritus-server`), and verifies docs.rs builds.
 
