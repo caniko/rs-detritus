@@ -12,3 +12,7 @@ Documentation:
 - [Architecture](docs/architecture.md)
 - [Operations](docs/operations.md)
 - [Storage layout](docs/storage.md)
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
