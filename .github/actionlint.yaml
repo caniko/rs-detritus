@@ -1,0 +1,8 @@
+self-hosted-runner:
+  labels:
+    - atlas
+
+paths:
+  .forgejo/workflows/**/*.{yml,yaml}:
+    ignore:
+      - 'specifying action "https://.*" in invalid format'

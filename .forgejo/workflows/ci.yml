@@ -1,0 +1,99 @@
+name: ci
+
+on:
+  push:
+    branches: [trunk]
+  pull_request:
+    branches: [trunk]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  fmt:
+    runs-on: atlas
+    container: rust:latest-bookworm
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v4
+      - uses: https://github.com/Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ github.workflow }}
+          cache-on-failure: true
+      - run: rustup component add rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    runs-on: atlas
+    container: rust:latest-bookworm
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v4
+      - uses: https://github.com/Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ github.workflow }}
+          cache-on-failure: true
+      - run: rustup component add clippy
+      - run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+
+  check:
+    runs-on: atlas
+    container: rust:latest-bookworm
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v4
+      - uses: https://github.com/Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ github.workflow }}
+          cache-on-failure: true
+      - run: cargo check --workspace --all-features
+
+  test:
+    runs-on: atlas
+    container: rust:latest-bookworm
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v4
+      - uses: https://github.com/Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ github.workflow }}
+          cache-on-failure: true
+      - run: cargo test --workspace --all-features
+
+  doc:
+    runs-on: atlas
+    container: rust:latest-bookworm
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v4
+      - uses: https://github.com/Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ github.workflow }}
+          cache-on-failure: true
+      - run: cargo doc --workspace --no-deps --all-features
+
+  msrv:
+    runs-on: atlas
+    container: rust:1.85-bookworm
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v4
+      - uses: https://github.com/Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ github.workflow }}-msrv
+          cache-on-failure: true
+      - run: cargo check --workspace --all-features
+
+  publish-dry-run:
+    runs-on: atlas
+    container: rust:latest-bookworm
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v4
+      - uses: https://github.com/Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ github.workflow }}
+          cache-on-failure: true
+      - run: cargo publish --dry-run -p detritus-protocol --allow-dirty
+      - run: cargo publish --dry-run -p detritus-client --allow-dirty
+      - run: cargo publish --dry-run -p detritus-server --allow-dirty

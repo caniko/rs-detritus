@@ -1,0 +1,49 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v[0-9]*.[0-9]*.[0-9]*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  verify:
+    runs-on: atlas
+    container: rust:latest-bookworm
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v4
+      - uses: https://github.com/Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ github.workflow }}
+          cache-on-failure: true
+      - run: rustup component add rustfmt clippy
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+      - run: cargo test --workspace --all-features
+
+  publish:
+    needs: verify
+    runs-on: atlas
+    container: rust:latest-bookworm
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v4
+      - uses: https://github.com/Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ github.workflow }}
+          cache-on-failure: true
+      # Configure CARGO_REGISTRY_TOKEN in Codeberg repo Settings -> Actions -> Secrets.
+      - run: cargo login "$CARGO_REGISTRY_TOKEN"
+      - run: cargo publish -p detritus-protocol
+      - run: sleep 60
+      - run: cargo publish -p detritus-client
+      - run: sleep 60
+      - run: cargo publish -p detritus-server
