@@ -39,6 +39,74 @@ To rotate a token:
 3. Update clients to use the new literal token.
 4. Remove the old token entry after clients have moved.
 
+On canix-managed NixOS hosts, edit the agenix source secret and redeploy:
+
+```sh
+canix agenix edit <host>-detritus-tokens
+canix deploy <host>
+```
+
+The NixOS module expects the decrypted token file to be mode `0400` and owned by
+`detritus:detritus`. The systemd unit refuses to start if the file is more
+widely readable.
+
+## NixOS Deployment Contract
+
+The flake exports:
+
+```text
+packages.<system>.detritus
+nixosModules.default
+nixosConfigurations.detritus-test-vm
+```
+
+A host imports `inputs.detritus.nixosModules.default` and enables:
+
+```nix
+services.detritus = {
+  enable = true;
+  bind = "127.0.0.1:4317";
+  tokensConfig = config.age.secrets.detritus-tokens.path;
+  logsTtlDays = 14;
+  crashesTtlDays = 90;
+};
+```
+
+The public URL is provided by the host reverse proxy. Record the live value in
+the canix host module when the host is chosen; the intended production shape is
+`https://detritus.<domain>/`.
+
+The service stores persistent data in `/var/lib/detritus` by default and runs as
+`detritus:detritus`. The module guards `dataDir` with `knownDataDirs` because
+changing it after deployment does not migrate existing blobs; it only points new
+writes at another tree.
+
+Expected layout:
+
+```text
+/var/lib/detritus/
+  logs/<project>/<source-id>/YYYY-MM-DD.ndjson
+  crashes/by-hash/<2-hex-prefix>/<sha256>.bin
+  crashes/by-source/<project>/<source-id>/<timestamp>-<sha256>.json
+  tmp/
+```
+
+Loopback health check after deployment:
+
+```sh
+curl http://127.0.0.1:4317/healthz
+```
+
+Public crash-ingest smoke:
+
+```sh
+curl -X POST \
+  -H "Authorization: Bearer <test-token>" \
+  https://detritus.<domain>/v1/crashes \
+  -F 'metadata={"schema_version":1,"source":{"project":"regicide","platform":"linux","version":"smoke","install_id":"00000000-0000-4000-8000-000000000001"},"timestamp":"2026-05-19T00:00:00Z","kind":"PanicTarball","build":{"git_sha":"smoke","profile":"release","target_triple":"x86_64-unknown-linux-gnu"},"panic_text":"deployment smoke","context":{},"attachments":[]}' \
+  -F dump=@/tmp/fake.bin
+```
+
 ## Rate Limits
 
 Default limits are per `(token, source-id)`:
