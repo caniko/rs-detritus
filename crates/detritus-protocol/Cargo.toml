@@ -5,4 +5,29 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = ["multipart"]
+multipart = ["dep:bytes", "dep:futures-util", "dep:multer", "dep:tokio"]
+
+[lints]
+workspace = true
+
 [dependencies]
+bytes = { version = "1", optional = true }
+chrono = { workspace = true, features = ["serde"] }
+futures-util = { version = "0.3", optional = true }
+multer = { version = "3", optional = true }
+prost = "0.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["io-util"], optional = true }
+tonic = "0.13"
+uuid = { workspace = true, features = ["serde"] }
+
+[build-dependencies]
+protoc-bin-vendored = "3"
+tonic-build = "0.13"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
