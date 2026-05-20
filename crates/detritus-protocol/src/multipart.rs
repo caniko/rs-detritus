@@ -1,5 +1,7 @@
 //! Feature-gated multipart helpers for crash envelopes.
 
+use std::fmt::Write as _;
+
 use bytes::Bytes;
 use futures_util::stream;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -12,6 +14,15 @@ use crate::{
 /// Default multipart boundary used by tests and simple SDK callers.
 pub const DEFAULT_BOUNDARY: &str = "detritus-boundary-v1";
 const CRLF: &str = "\r\n";
+
+/// Per-part encoding options for multipart crash upload.
+#[derive(Debug, Clone, Default)]
+pub struct PartEncoding {
+    /// Value of the `Content-Encoding` header to add to this part, e.g. `"zstd"`.
+    ///
+    /// `None` means no `Content-Encoding` header is emitted (plain bytes).
+    pub content_encoding: Option<String>,
+}
 
 impl CrashEnvelope {
     /// Writes the envelope as an RFC 7578 multipart body with [`DEFAULT_BOUNDARY`].
@@ -31,23 +42,53 @@ impl CrashEnvelope {
     where
         W: AsyncWrite + Unpin,
     {
+        let encodings = EnvelopeEncodings::none();
+        self.write_to_with_boundary_and_encodings(writer, boundary, &encodings)
+            .await
+    }
+
+    /// Writes the envelope as an RFC 7578 multipart body, applying per-part
+    /// `Content-Encoding` headers as specified by `encodings`.
+    pub async fn write_to_with_boundary_and_encodings<W>(
+        &self,
+        writer: &mut W,
+        boundary: &str,
+        encodings: &EnvelopeEncodings,
+    ) -> Result<(), ProtocolError>
+    where
+        W: AsyncWrite + Unpin,
+    {
         let metadata = serde_json::to_vec(&self.metadata)?;
-        write_part(writer, boundary, "metadata", "application/json", &metadata).await?;
+        write_part(
+            writer,
+            boundary,
+            "metadata",
+            "application/json",
+            None,
+            &metadata,
+        )
+        .await?;
         write_part(
             writer,
             boundary,
             "dump",
             "application/octet-stream",
+            encodings.dump.content_encoding.as_deref(),
             &self.dump,
         )
         .await?;
-        for attachment in &self.attachments {
+        for (idx, attachment) in self.attachments.iter().enumerate() {
             let name = format!("attach:{}", attachment.key);
+            let encoding = encodings
+                .attachments
+                .get(idx)
+                .and_then(|e| e.content_encoding.as_deref());
             write_part(
                 writer,
                 boundary,
                 &name,
                 &attachment.content_type,
+                encoding,
                 &attachment.bytes,
             )
             .await?;
@@ -128,11 +169,34 @@ impl CrashEnvelope {
     }
 }
 
+/// Per-part encoding settings for an entire [`CrashEnvelope`].
+///
+/// `attachments[i]` corresponds to `envelope.attachments[i]`. If the slice is
+/// shorter than the attachment list the remaining attachments are written with
+/// no `Content-Encoding` header.
+#[derive(Debug, Clone, Default)]
+pub struct EnvelopeEncodings {
+    /// Encoding for the `dump` part.
+    pub dump: PartEncoding,
+    /// Encodings for each `attach:<key>` part, in the same order as
+    /// [`CrashEnvelope::attachments`].
+    pub attachments: Vec<PartEncoding>,
+}
+
+impl EnvelopeEncodings {
+    /// Returns an `EnvelopeEncodings` with no `Content-Encoding` set on any part.
+    #[must_use]
+    pub fn none() -> Self {
+        Self::default()
+    }
+}
+
 async fn write_part<W>(
     writer: &mut W,
     boundary: &str,
     name: &str,
     content_type: &str,
+    content_encoding: Option<&str>,
     bytes: &[u8],
 ) -> Result<(), ProtocolError>
 where
@@ -141,14 +205,14 @@ where
     writer
         .write_all(format!("--{boundary}{CRLF}").as_bytes())
         .await?;
-    writer
-        .write_all(
-            format!(
-                "Content-Disposition: form-data; name=\"{name}\"{CRLF}Content-Type: {content_type}{CRLF}{CRLF}"
-            )
-            .as_bytes(),
-        )
-        .await?;
+    let mut headers = format!(
+        "Content-Disposition: form-data; name=\"{name}\"{CRLF}Content-Type: {content_type}{CRLF}"
+    );
+    if let Some(encoding) = content_encoding {
+        let _ = write!(headers, "Content-Encoding: {encoding}{CRLF}");
+    }
+    headers.push_str(CRLF);
+    writer.write_all(headers.as_bytes()).await?;
     writer.write_all(bytes).await?;
     writer.write_all(CRLF.as_bytes()).await?;
     Ok(())

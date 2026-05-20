@@ -44,6 +44,8 @@ struct BlobPointer {
     len: u64,
     path: String,
     dedup: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    content_encoding: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,6 +56,8 @@ struct AttachmentPointer {
     len: u64,
     path: String,
     dedup: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    content_encoding: Option<String>,
 }
 
 pub(crate) async fn crashes_handler(
@@ -172,6 +176,7 @@ async fn crashes_inner(
                     len: pointer.len,
                     path: pointer.path,
                     dedup: pointer.dedup,
+                    content_encoding: pointer.content_encoding,
                 });
             }
             _ => return Err(CrashError::BadRequest(format!("unexpected part `{name}`"))),
@@ -213,6 +218,13 @@ async fn write_part_to_blob(
     mut field: Field<'_>,
     max_bytes: u64,
 ) -> Result<BlobPointer, CrashError> {
+    // Capture Content-Encoding before consuming the field body.
+    let content_encoding = field
+        .headers()
+        .get(axum::http::header::CONTENT_ENCODING)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+
     fs::create_dir_all(storage.tmp_dir()).await?;
     let temp_path = storage.tmp_dir().join(format!("{}.tmp", Uuid::new_v4()));
     let mut file = fs::File::create(&temp_path).await?;
@@ -240,6 +252,7 @@ async fn write_part_to_blob(
         len,
         path,
         dedup,
+        content_encoding,
     })
 }
 
@@ -299,6 +312,7 @@ async fn write_index(
             len: dump.len,
             path: dump.path.clone(),
             dedup: dump.dedup,
+            content_encoding: dump.content_encoding.clone(),
         },
         attachments,
     };

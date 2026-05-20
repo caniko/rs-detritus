@@ -1,7 +1,8 @@
 //! Client SDK for Detritus ingestion.
 //!
 //! Public API is limited to [`Layer`], [`LayerBuilder`], [`install_panic_hook`],
-//! [`ship_pending_crashes`], [`PanicHookConfig`], [`PanicKind`], and [`SourceId`].
+//! [`ship_pending_crashes`], [`ship_pending_crashes_with_config`], [`ShipConfig`],
+//! [`PanicHookConfig`], [`PanicKind`], and [`SourceId`].
 //! Everything else is an implementation detail and may change between releases.
 //!
 //! ```no_run
@@ -28,6 +29,7 @@
 //! # drop(layer);
 //! ```
 
+pub mod compression;
 mod layer;
 mod panic_hook;
 mod shipper;
@@ -40,4 +42,4 @@ pub use layer::{Layer, LayerBuilder, LayerError};
 /// Panic-hook crash capture API.
 pub use panic_hook::{PanicHookConfig, PanicHookError, PanicKind, install_panic_hook};
 /// Offline crash spool shipping API.
-pub use shipper::{ShipError, ship_pending_crashes};
+pub use shipper::{ShipConfig, ShipError, ship_pending_crashes, ship_pending_crashes_with_config};

@@ -30,7 +30,36 @@ Auth uses bearer tokens in the `Authorization` header. Tokens are scoped to `(pr
 
 ## Compression
 
-Compression is gzip on both endpoints and is mandatory on the wire. Logs already benefit from OTLP/gRPC gzip support, and crash uploads often include repetitive text attachments or structured metadata, so requiring gzip gives predictable bandwidth behavior without adding negotiation complexity in v1.
+Detritus uses a two-layer compression model for crash uploads.
+
+**Wire-level gzip (Layer 1)** — gzip is mandatory on both endpoints and is
+transparent to application logic.  Logs benefit from OTLP/gRPC's built-in gzip
+support.  Crash multipart uploads are sent over HTTP/2 with the
+`tower-http` gzip layer active on the server.
+
+**Payload-level zstd (Layer 2)** — the client SDK compresses the `dump`
+multipart part and optionally text-ish attachment parts with zstd before
+computing the SHA-256 and uploading.  The hash therefore covers the
+**compressed** bytes, preserving content-addressed dedup semantics: two uploads
+of the same source dump will compress to identical bytes (given the same
+compression level) and land on the same hash.  The server stores the bytes
+exactly as received — it never decompresses.
+
+Each compressed part signals its encoding via a per-part
+`Content-Encoding: zstd` header, which `multer` exposes through
+`Field::headers()`.  The server records this value in the on-disk index as
+`BlobPointer.content_encoding` / `AttachmentPointer.content_encoding`
+(serialised as `"content_encoding": "zstd"` in the index JSON; absent when the
+part was uploaded without encoding).
+
+The client applies zstd level 19 by default.  Text-ish content types
+(`text/*`, `application/json`, `application/x-ndjson`, `application/yaml`,
+`application/xml`) are compressed; already-compressed types (`application/zstd`,
+`application/gzip`, `image/*`, `video/*`, `audio/*`, `application/octet-stream`,
+`application/zip`) are passed through unmodified.  The metadata JSON part is
+never compressed (bounded at 64 KB; the overhead is not worth per-part encoding
+negotiation).  The OTLP/gRPC logs path is unaffected — transport gzip already
+handles it.
 
 ## Multi-Tenancy
 

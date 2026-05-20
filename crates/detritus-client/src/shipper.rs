@@ -4,12 +4,59 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use detritus_protocol::{CrashAttachment, CrashEnvelope, CrashMetadata};
+use detritus_protocol::{
+    CrashAttachment, CrashEnvelope, CrashMetadata,
+    multipart::{EnvelopeEncodings, PartEncoding},
+};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use secrecy::{ExposeSecret, SecretString};
 use url::Url;
 
-use crate::{panic_hook::StoredUploadConfig, spool::SpoolLock};
+use crate::{
+    compression::{DEFAULT_COMPRESSION_LEVEL, compress, should_compress_content_type},
+    panic_hook::StoredUploadConfig,
+    spool::SpoolLock,
+};
+
+/// Configuration knobs for crash-dump upload compression.
+///
+/// Created with [`ShipConfig::default`] and customised with the builder
+/// methods.  The defaults compress dumps at zstd level 19 and also
+/// compress text-ish attachments.
+#[derive(Debug, Clone)]
+pub struct ShipConfig {
+    /// Zstd level used for the `dump` part. Valid range is `1..=22`.
+    /// Defaults to [`DEFAULT_COMPRESSION_LEVEL`] (19).
+    pub dump_compression_level: i32,
+    /// When `true`, text-ish attachments are compressed with zstd before
+    /// upload. Defaults to `true`.
+    pub attachment_compression: bool,
+}
+
+impl Default for ShipConfig {
+    fn default() -> Self {
+        Self {
+            dump_compression_level: DEFAULT_COMPRESSION_LEVEL,
+            attachment_compression: true,
+        }
+    }
+}
+
+impl ShipConfig {
+    /// Sets the zstd compression level for the `dump` part.
+    #[must_use]
+    pub fn with_dump_compression_level(mut self, level: i32) -> Self {
+        self.dump_compression_level = level;
+        self
+    }
+
+    /// Enables or disables zstd compression for text-ish attachment parts.
+    #[must_use]
+    pub fn with_attachment_compression(mut self, enabled: bool) -> Self {
+        self.attachment_compression = enabled;
+        self
+    }
+}
 
 /// Errors returned while shipping pending crash reports.
 #[derive(Debug, thiserror::Error)]
@@ -36,10 +83,24 @@ pub enum ShipError {
 /// A filesystem lock on `spool_dir/.lock` prevents two processes from scanning
 /// the same pending directory concurrently. One spool directory per process is
 /// still the recommended default.
+///
+/// Dump bytes and text-ish attachments are compressed with zstd
+/// (level [`DEFAULT_COMPRESSION_LEVEL`]) **before** the SHA-256 is computed,
+/// so content-addressed dedup is based on the compressed bytes.
 pub async fn ship_pending_crashes(
     spool_dir: impl AsRef<Path>,
     endpoint: Url,
     token: SecretString,
+) -> Result<usize, ShipError> {
+    ship_pending_crashes_with_config(spool_dir, endpoint, token, ShipConfig::default()).await
+}
+
+/// Like [`ship_pending_crashes`] but with explicit compression settings.
+pub async fn ship_pending_crashes_with_config(
+    spool_dir: impl AsRef<Path>,
+    endpoint: Url,
+    token: SecretString,
+    config: ShipConfig,
 ) -> Result<usize, ShipError> {
     let spool_dir = spool_dir.as_ref();
     let _lock = SpoolLock::acquire(spool_dir)?;
@@ -52,7 +113,7 @@ pub async fn ship_pending_crashes(
     let mut shipped = 0;
     for entry in pending_entries(&pending)? {
         let envelope = read_envelope(&entry)?;
-        post_envelope(&endpoint, &token, &envelope).await?;
+        post_envelope(&endpoint, &token, &envelope, &config).await?;
         let destination = sent.join(
             entry
                 .file_name()
@@ -107,13 +168,63 @@ fn read_envelope(entry: &Path) -> Result<CrashEnvelope, ShipError> {
     })
 }
 
+/// Applies zstd compression to the envelope's dump (and optionally its
+/// attachments), then serialises to multipart and POSTs it.
+///
+/// Compressed bytes replace the originals in-place inside a locally-owned
+/// clone so the original `CrashEnvelope` is not mutated.
 async fn post_envelope(
     endpoint: &Url,
     token: &SecretString,
     envelope: &CrashEnvelope,
+    config: &ShipConfig,
 ) -> Result<(), ShipError> {
+    // Build a locally-owned envelope with compressed bytes plus the matching
+    // EnvelopeEncodings that records which parts are zstd-encoded.
+    let mut compressed_envelope = envelope.clone();
+    let mut encodings = EnvelopeEncodings {
+        dump: PartEncoding::default(),
+        attachments: Vec::with_capacity(envelope.attachments.len()),
+    };
+
+    // Compress the dump unconditionally.
+    let compressed_dump = compress(&envelope.dump, config.dump_compression_level)?;
+    compressed_envelope.dump = compressed_dump;
+    encodings.dump = PartEncoding {
+        content_encoding: Some("zstd".to_owned()),
+    };
+
+    // Optionally compress text-ish attachments.
+    for attachment in &envelope.attachments {
+        let should =
+            config.attachment_compression && should_compress_content_type(&attachment.content_type);
+        if should {
+            let compressed = compress(&attachment.bytes, config.dump_compression_level)?;
+            // Find the matching attachment in our local clone and replace bytes.
+            if let Some(local) = compressed_envelope
+                .attachments
+                .iter_mut()
+                .find(|a| a.key == attachment.key)
+            {
+                local.bytes = compressed;
+            }
+            encodings.attachments.push(PartEncoding {
+                content_encoding: Some("zstd".to_owned()),
+            });
+        } else {
+            encodings.attachments.push(PartEncoding::default());
+        }
+    }
+
     let mut body = Vec::new();
-    envelope.write_to(&mut body).await?;
+    compressed_envelope
+        .write_to_with_boundary_and_encodings(
+            &mut body,
+            detritus_protocol::multipart::DEFAULT_BOUNDARY,
+            &encodings,
+        )
+        .await?;
+
     let url = crash_url(endpoint);
     let response = reqwest::Client::builder()
         .http2_prior_knowledge()
