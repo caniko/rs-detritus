@@ -59,6 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         max_dump_bytes: cli.max_dump_bytes,
         token_store: security.token_store,
         rate_limit: security.rate_limit,
+        schema_registry: security.schema_registry,
         retention: RetentionConfig {
             logs_ttl_days: cli.logs_ttl_days,
             crashes_ttl_days: cli.crashes_ttl_days,

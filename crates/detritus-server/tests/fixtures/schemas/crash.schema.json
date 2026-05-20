@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CrashMetadata fixture schema",
+  "description": "Minimal JSON Schema for detritus-server schema registry tests.",
+  "type": "object"
+}

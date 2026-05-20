@@ -7,7 +7,8 @@
 use std::time::Duration;
 
 use detritus_server::{
-    RateLimitConfig, RetentionConfig, ServerConfig, TestToken, TokenStore, serve_with_shutdown,
+    RateLimitConfig, RetentionConfig, SchemaRegistry, ServerConfig, TestToken, TokenStore,
+    serve_with_shutdown,
 };
 use tokio::{net::TcpListener, sync::oneshot};
 
@@ -23,6 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         token_store: TokenStore::for_tests(Vec::<TestToken>::new()),
         rate_limit: RateLimitConfig::default(),
         retention: RetentionConfig::default(),
+        schema_registry: SchemaRegistry::empty(),
     };
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
