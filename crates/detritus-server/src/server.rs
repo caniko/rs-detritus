@@ -23,6 +23,7 @@ use crate::{
     logs::{LogWriterPool, LogsHandler},
     metrics::Metrics,
     rate_limit::{RateLimitConfig, RateLimiter},
+    schemas::SchemaRegistry,
     storage::StoragePaths,
 };
 
@@ -41,6 +42,8 @@ pub struct ServerConfig {
     pub rate_limit: RateLimitConfig,
     /// Retention policy for logs, crash indexes, and unreferenced blobs.
     pub retention: RetentionConfig,
+    /// Per-tenant JSON Schema registry (no-op in Phase 01).
+    pub schema_registry: SchemaRegistry,
 }
 
 #[derive(Clone)]
@@ -49,6 +52,10 @@ pub(crate) struct AppState {
     pub(crate) max_dump_bytes: u64,
     pub(crate) rate_limiter: RateLimiter,
     pub(crate) metrics: Metrics,
+    /// Per-tenant JSON Schema registry.  Currently a no-op; Phase 02 wires
+    /// real validation through this field.
+    #[allow(dead_code)] // Phase 02 will call schema_registry.validate(...) from handlers.
+    pub(crate) schema_registry: SchemaRegistry,
 }
 
 /// Runs a Detritus server until the process receives Ctrl-C.
@@ -73,7 +80,7 @@ pub async fn serve(config: ServerConfig) -> Result<(), Box<dyn std::error::Error
 ///
 /// ```no_run
 /// use detritus_server::{
-///     RateLimitConfig, RetentionConfig, ServerConfig, TestToken, TokenStore,
+///     RateLimitConfig, RetentionConfig, SchemaRegistry, ServerConfig, TestToken, TokenStore,
 ///     serve_with_shutdown,
 /// };
 /// use tokio::net::TcpListener;
@@ -88,6 +95,7 @@ pub async fn serve(config: ServerConfig) -> Result<(), Box<dyn std::error::Error
 ///     token_store: TokenStore::for_tests(Vec::<TestToken>::new()),
 ///     rate_limit: RateLimitConfig::default(),
 ///     retention: RetentionConfig::default(),
+///     schema_registry: SchemaRegistry::empty(),
 /// };
 ///
 /// serve_with_shutdown(listener, config, async {}).await?;
@@ -112,6 +120,7 @@ pub async fn serve_with_shutdown(
         config.token_store,
         rate_limiter,
         metrics,
+        config.schema_registry,
     );
     let addr = listener.local_addr()?;
     tracing::info!(%addr, "observability server listening");
@@ -132,12 +141,14 @@ fn app(
     token_store: TokenStore,
     rate_limiter: RateLimiter,
     metrics: Metrics,
+    schema_registry: SchemaRegistry,
 ) -> Router {
     let state = AppState {
         storage,
         max_dump_bytes,
         rate_limiter,
         metrics: metrics.clone(),
+        schema_registry,
     };
     let grpc = Routes::new(LogsServiceServer::new(LogsHandler::new(
         writers,

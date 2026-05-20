@@ -22,6 +22,8 @@ pub mod crash;
 pub mod multipart;
 /// Curated OpenTelemetry Protocol log-service bindings.
 pub mod otlp;
+/// Per-tenant JSON Schema descriptors for payload validation.
+pub mod schema;
 /// Source identity attached to Detritus payloads.
 pub mod source;
 

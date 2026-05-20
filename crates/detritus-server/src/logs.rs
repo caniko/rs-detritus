@@ -37,11 +37,7 @@ pub(crate) struct LogsHandler {
 }
 
 impl LogsHandler {
-    pub(crate) fn new(
-        writers: LogWriterPool,
-        rate_limiter: RateLimiter,
-        metrics: Metrics,
-    ) -> Self {
+    pub(crate) fn new(writers: LogWriterPool, rate_limiter: RateLimiter, metrics: Metrics) -> Self {
         Self {
             writers,
             rate_limiter,

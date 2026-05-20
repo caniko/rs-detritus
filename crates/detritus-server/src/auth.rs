@@ -9,12 +9,18 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use detritus_protocol::schema::{SchemaError, SchemaKind};
 use serde::Deserialize;
 use serde_json::json;
 use subtle::ConstantTimeEq;
 use tokio::fs;
 
-use crate::{metrics::Metrics, rate_limit::RateLimitConfig, storage::SourceKey};
+use crate::{
+    metrics::Metrics,
+    rate_limit::RateLimitConfig,
+    schemas::{ProjectSchemaEntry, SchemaRegistry},
+    storage::SourceKey,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct TokenContext {
@@ -108,16 +114,52 @@ pub struct SecurityConfig {
     pub token_store: TokenStore,
     /// Per-token and per-source rate limit configuration.
     pub rate_limit: RateLimitConfig,
+    /// Per-tenant JSON Schema registry (no-op in Phase 01).
+    pub schema_registry: SchemaRegistry,
 }
 
 /// Loads token and rate-limit configuration from a TOML file.
+///
+/// Schema paths in `[[schema]]` entries are resolved relative to the tokens
+/// config file's parent directory, not relative to the current working
+/// directory.  This prevents deployment breakage when `systemd` (or similar)
+/// starts the daemon from `/`.
 pub async fn load_security_config(path: &Path) -> Result<SecurityConfig, AuthConfigError> {
     let raw = fs::read_to_string(path).await?;
     let config: TokensConfig = toml::from_str(&raw)?;
+
+    // Collect the set of project names declared in [[token]] entries so we can
+    // validate that every [[schema]] entry refers to a known project.
+    let known_projects: std::collections::HashSet<&str> =
+        config.token.iter().map(|t| t.project.as_str()).collect();
+
+    // Determine the directory containing the tokens file so schema paths can
+    // be resolved relative to it rather than relative to CWD.
+    let config_dir = path.parent().unwrap_or_else(|| Path::new("."));
+
+    // Build the list of resolved schema entries, checking project membership.
+    let mut schema_entries: Vec<ProjectSchemaEntry> = Vec::new();
+    for entry in &config.schema {
+        if !known_projects.contains(entry.project.as_str()) {
+            return Err(AuthConfigError::SchemaProjectMismatch {
+                project: entry.project.clone(),
+                kind: entry.kind,
+            });
+        }
+        schema_entries.push(ProjectSchemaEntry {
+            project: entry.project.clone(),
+            kind: entry.kind,
+            // Resolve the path relative to the tokens config's parent dir.
+            path: config_dir.join(&entry.path),
+        });
+    }
+
     let token_store = TokenStore::from_entries(config.token)?;
+    let schema_registry = SchemaRegistry::load(&schema_entries).await?;
     Ok(SecurityConfig {
         token_store,
         rate_limit: config.rate_limit.unwrap_or_default(),
+        schema_registry,
     })
 }
 
@@ -139,6 +181,11 @@ struct TokensConfig {
     #[serde(default)]
     token: Vec<TokenEntry>,
     rate_limit: Option<RateLimitConfig>,
+    /// Optional per-tenant schema declarations.  Existing tokens.toml files
+    /// without a `[[schema]]` table will deserialise this as an empty `Vec`,
+    /// producing a [`SchemaRegistry::empty()`] registry.
+    #[serde(default)]
+    schema: Vec<SchemaEntry>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -147,6 +194,17 @@ struct TokenEntry {
     secret: String,
     project: String,
     source_prefix: String,
+}
+
+/// One `[[schema]]` entry from a tokens config file.
+#[derive(Debug, Deserialize)]
+struct SchemaEntry {
+    /// Project this schema applies to; must match a `[[token]].project`.
+    project: String,
+    /// Payload kind (`crash_metadata` or `log_attributes`).
+    kind: SchemaKind,
+    /// Path to the JSON Schema file, resolved relative to the tokens config.
+    path: std::path::PathBuf,
 }
 
 /// Errors returned while loading security configuration.
@@ -169,6 +227,19 @@ pub enum AuthConfigError {
         /// Hash parser error message.
         message: String,
     },
+    /// A `[[schema]]` entry references a project not declared in `[[token]]`.
+    #[error(
+        "schema entry for project `{project}` / kind `{kind:?}` does not match any token project"
+    )]
+    SchemaProjectMismatch {
+        /// The project name from the `[[schema]]` entry.
+        project: String,
+        /// The schema kind from the entry.
+        kind: SchemaKind,
+    },
+    /// A schema file could not be read or parsed.
+    #[error("schema error: {0}")]
+    Schema(#[from] SchemaError),
 }
 
 impl TokenStore {

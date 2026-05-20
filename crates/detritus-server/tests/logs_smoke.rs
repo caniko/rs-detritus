@@ -16,7 +16,8 @@ use detritus_protocol::{
     },
 };
 use detritus_server::{
-    RateLimitConfig, RetentionConfig, ServerConfig, TestToken, TokenStore, serve_with_shutdown,
+    RateLimitConfig, RetentionConfig, SchemaRegistry, ServerConfig, TestToken, TokenStore,
+    serve_with_shutdown,
 };
 use tempfile::TempDir;
 use tokio::{net::TcpListener, sync::oneshot};
@@ -135,6 +136,7 @@ async fn spawn_server(
         token_store: test_token_store(),
         rate_limit: RateLimitConfig::default(),
         retention: RetentionConfig::default(),
+        schema_registry: SchemaRegistry::empty(),
     };
     let handle = tokio::spawn(serve_with_shutdown(listener, config, async {
         let _ = shutdown_rx.await;

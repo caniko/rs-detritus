@@ -1,0 +1,21 @@
+## Tokens config with [[schema]] entries — used by schema registry tests.
+##
+## The schema paths are relative to this file's parent directory, so
+## `schemas/crash.schema.json` resolves to `tests/fixtures/schemas/crash.schema.json`.
+
+[[token]]
+id = "fixture-token"
+# argon2id hash of the literal string "fixture-secret" (test-only, never deployed)
+secret = "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$bm90YXJlYWxoYXNoYnV0cGFzc2VzZm9ybWF0Y2hlY2s"
+project = "acme"
+source_prefix = "src/"
+
+[[schema]]
+project = "acme"
+kind = "crash_metadata"
+path = "schemas/crash.schema.json"
+
+[[schema]]
+project = "acme"
+kind = "log_attributes"
+path = "schemas/log.schema.json"

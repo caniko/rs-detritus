@@ -6,7 +6,8 @@ use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use chrono::Utc;
 use detritus::{Layer, SourceId};
 use detritus_server::{
-    RateLimitConfig, RetentionConfig, ServerConfig, TestToken, TokenStore, serve_with_shutdown,
+    RateLimitConfig, RetentionConfig, SchemaRegistry, ServerConfig, TestToken, TokenStore,
+    serve_with_shutdown,
 };
 use secrecy::SecretString;
 use tempfile::TempDir;
@@ -79,6 +80,7 @@ async fn spawn_server(
         token_store: test_token_store(),
         rate_limit: RateLimitConfig::default(),
         retention: RetentionConfig::default(),
+        schema_registry: SchemaRegistry::empty(),
     };
     let handle = tokio::spawn(serve_with_shutdown(listener, config, async {
         let _ = shutdown_rx.await;
