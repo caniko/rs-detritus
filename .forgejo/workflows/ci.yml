@@ -94,6 +94,12 @@ jobs:
         with:
           shared-key: ${{ github.workflow }}
           cache-on-failure: true
+      # Only detritus-protocol is dry-run-able on PR/push: the dependent
+      # crates carry `detritus-protocol = "X.Y.Z"` version constraints,
+      # which cargo resolves against the live crates.io index. Until
+      # X.Y.Z is actually published (which only happens on tag, in the
+      # release workflow), dry-runs for detritus-client and
+      # detritus-server both fail with "no matching package".
+      # The real `cargo publish` of those two runs in release.yml after
+      # detritus-protocol@X.Y.Z is visible on the sparse index.
       - run: cargo publish --dry-run -p detritus-protocol --allow-dirty
-      - run: cargo publish --dry-run -p detritus-client --allow-dirty
-      - run: cargo publish --dry-run -p detritus-server --allow-dirty
