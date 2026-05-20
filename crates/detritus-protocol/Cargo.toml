@@ -39,3 +39,7 @@ tonic-build = "0.13"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

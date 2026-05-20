@@ -54,3 +54,7 @@ minidumper-child = { version = "0.3", optional = true }
 argon2 = "0.5"
 detritus-server = { path = "../detritus-server", version = "0.1.0" }
 tempfile = "3"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

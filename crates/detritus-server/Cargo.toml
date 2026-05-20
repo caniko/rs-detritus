@@ -53,3 +53,7 @@ filetime = "0.2"
 reqwest = { workspace = true, features = ["json", "multipart", "http2"] }
 tempfile = "3"
 zstd = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
