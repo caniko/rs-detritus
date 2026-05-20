@@ -93,5 +93,12 @@
           (import ./nix/test-vm.nix { inherit self; })
         ];
       };
+
+      nixosConfigurations.detritus-multi-test-vm = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          (import ./nix/test-vm-multi.nix { inherit self; })
+        ];
+      };
     };
 }
