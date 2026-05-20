@@ -15,14 +15,15 @@ The v1 receiver exposes two ingestion endpoints:
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
-- [Operations](docs/operations.md)
-- [Storage layout](docs/storage.md)
+- [Documentation book](https://caniko.codeberg.page/rs-detritus/)
+- [Architecture](docs/src/concepts/architecture.md)
+- [Operations](docs/src/deployment/operations.md)
+- [Storage layout](docs/src/concepts/storage.md)
 
 ## CI
 
 - [CI status](https://codeberg.org/caniko/rs-detritus/actions/workflows/ci.yml)
-- On every push to `trunk` and every PR, CI runs fmt, clippy, check, test, doc, an MSRV check, and `cargo publish --dry-run` for each crate.
+- On every push to `trunk` and every PR, CI runs fmt, clippy, check, test, doc, an MSRV check, `cargo-audit`, `cargo-deny`, and a `cargo publish --dry-run` for `detritus-protocol`.
 - On every tag `vX.Y.Z`, the release workflow runs the real `cargo publish` to crates.io using the `CARGO_REGISTRY_TOKEN` repo secret.
 - Release procedure: [RELEASING.md](RELEASING.md)
 

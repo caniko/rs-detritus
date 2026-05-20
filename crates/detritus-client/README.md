@@ -122,8 +122,9 @@ Each spool directory uses a filesystem lock to avoid concurrent scans by two pro
 
 - [API docs](https://docs.rs/detritus-client)
 - [Workspace](https://codeberg.org/caniko/rs-detritus)
-- [Architecture](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/architecture.md)
-- [Operations](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/operations.md)
+- [Documentation book](https://caniko.codeberg.page/rs-detritus/)
+- [Architecture](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/concepts/architecture.md)
+- [Operations](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/deployment/operations.md)
 
 ## License
 

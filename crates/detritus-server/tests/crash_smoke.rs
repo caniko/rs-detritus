@@ -1,6 +1,6 @@
 //! Crash ingestion smoke tests.
 
-use std::{net::SocketAddr, path::Path};
+use std::{net::SocketAddr, path::Path, sync::Once};
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use chrono::Utc;
@@ -23,6 +23,8 @@ const INSTALL_ID: &str = "11111111-1111-1111-1111-111111111111";
 
 #[tokio::test]
 async fn crash_smoke_writes_blob_and_source_index_with_dedup() {
+    install_default_crypto_provider();
+
     let temp = TempDir::new().expect("temp dir");
     let (addr, shutdown, handle) = spawn_server(temp.path()).await;
     let dump = deterministic_dump();
@@ -265,4 +267,11 @@ async fn count_blobs(data_dir: &Path) -> usize {
         }
     }
     count
+}
+
+fn install_default_crypto_provider() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    });
 }

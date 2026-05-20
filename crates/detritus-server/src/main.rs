@@ -46,6 +46,10 @@ enum LogFormat {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("install aws-lc-rs as the default rustls CryptoProvider");
+
     let cli = Cli::parse();
     init_tracing(cli.log_format);
 

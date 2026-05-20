@@ -17,6 +17,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
+        lib = pkgs.lib;
         craneLib = crane.mkLib pkgs;
         src = pkgs.lib.fileset.toSource {
           root = ./.;
@@ -49,11 +50,31 @@
             mainProgram = "detritusd";
           };
         });
+
+        docs = pkgs.stdenv.mkDerivation {
+          pname = "detritus-docs";
+          version = "0.1.0";
+          src = lib.fileset.toSource {
+            root = ./.;
+            fileset = lib.fileset.maybeMissing ./docs;
+          };
+          nativeBuildInputs = [ pkgs.mdbook ];
+          phases = [ "buildPhase" "installPhase" ];
+          buildPhase = ''
+            mkdir docs
+            cp -r --no-preserve=mode "$src"/docs/. docs/
+            mdbook build docs
+          '';
+          installPhase = ''
+            cp -r docs/book "$out"
+          '';
+        };
       in
       {
         packages = {
           default = detritus;
-          inherit detritus;
+          inherit detritus docs;
+          site = docs;
         };
 
         checks = {
@@ -74,6 +95,7 @@
           checks = self.checks.${system};
           packages = [
             pkgs.cargo-nextest
+            pkgs.mdbook
             pkgs.pkg-config
             pkgs.protobuf
             pkgs.rust-analyzer

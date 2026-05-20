@@ -16,7 +16,7 @@ Install and run the receiver binary:
 
 ```sh
 cargo install detritus-server
-detritusd --bind 127.0.0.1:4317 --data-dir ./detritus-data --tokens ./tokens.toml
+detritusd --bind 127.0.0.1:4317 --data-dir ./detritus-data --tokens-config ./tokens.toml
 ```
 
 Embed the server when a test or harness needs its own listener:
@@ -83,7 +83,7 @@ See the storage layout documentation for the exact on-disk paths.
 `detritusd` exposes `/healthz` for liveness and `/metrics` in OpenMetrics text format.
 The retention janitor deletes old logs, expired crash indexes, and unreferenced blobs according to
 `RetentionConfig`.
-See `docs/operations.md` in the workspace for deployment notes, token-file format, and runtime
+See `docs/src/deployment/operations.md` in the workspace for deployment notes, token-file format, and runtime
 expectations.
 
 ## Compatibility
@@ -104,9 +104,10 @@ expectations.
 
 - [API docs](https://docs.rs/detritus-server)
 - [Workspace](https://codeberg.org/caniko/rs-detritus)
-- [Architecture](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/architecture.md)
-- [Operations](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/operations.md)
-- [Storage layout](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/storage.md)
+- [Documentation book](https://caniko.codeberg.page/rs-detritus/)
+- [Architecture](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/concepts/architecture.md)
+- [Operations](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/deployment/operations.md)
+- [Storage layout](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/concepts/storage.md)
 
 ## License
 

@@ -32,7 +32,8 @@ flate2 = "1"
 fs2 = "0.4"
 parking_lot = "0.12"
 prost = "0.13"
-reqwest = { version = "0.13.3", default-features = false, features = ["multipart", "stream", "gzip", "http2"] }
+reqwest = { workspace = true, features = ["multipart", "stream", "gzip"] }
+rustls = { workspace = true }
 secrecy = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -53,7 +54,10 @@ minidumper-child = { version = "0.3", optional = true }
 [dev-dependencies]
 argon2 = "0.5"
 detritus-server = { path = "../detritus-server", version = "0.1.0" }
+rcgen = { version = "0.13", default-features = false, features = ["aws_lc_rs"] }
+rustls-pemfile = "2"
 tempfile = "3"
+tokio-rustls = { version = "0.26", default-features = false, features = ["aws_lc_rs"] }
 
 [package.metadata.docs.rs]
 all-features = true

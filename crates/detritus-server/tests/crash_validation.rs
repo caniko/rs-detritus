@@ -8,7 +8,7 @@
 //! - A crash for a tenant with no registered schema is accepted regardless of
 //!   its content (accept-by-default).
 
-use std::{net::SocketAddr, path::Path};
+use std::{net::SocketAddr, path::Path, sync::Once};
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use chrono::Utc;
@@ -52,6 +52,8 @@ fn strict_schema() -> serde_json::Value {
 
 #[tokio::test]
 async fn crash_rejected_when_schema_violated_and_no_blob_written() {
+    install_default_crypto_provider();
+
     let temp = TempDir::new().expect("temp dir");
     let schema_path = temp.path().join("crash.schema.json");
     std::fs::write(&schema_path, strict_schema().to_string()).expect("write schema");
@@ -119,6 +121,8 @@ async fn crash_rejected_when_schema_violated_and_no_blob_written() {
 
 #[tokio::test]
 async fn crash_accepted_when_no_schema_registered() {
+    install_default_crypto_provider();
+
     let temp = TempDir::new().expect("temp dir");
     // Empty registry: no schema for any tenant.
     let (addr, shutdown, handle) = spawn_server(temp.path(), SchemaRegistry::empty()).await;
@@ -259,4 +263,11 @@ async fn count_blobs_if_exists(blobs_dir: &Path) -> usize {
         }
     }
     count
+}
+
+fn install_default_crypto_provider() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    });
 }

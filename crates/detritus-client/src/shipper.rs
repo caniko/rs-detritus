@@ -14,6 +14,7 @@ use url::Url;
 
 use crate::{
     compression::{DEFAULT_COMPRESSION_LEVEL, compress, should_compress_content_type},
+    install_default_crypto_provider,
     panic_hook::StoredUploadConfig,
     spool::SpoolLock,
 };
@@ -179,6 +180,8 @@ async fn post_envelope(
     envelope: &CrashEnvelope,
     config: &ShipConfig,
 ) -> Result<(), ShipError> {
+    install_default_crypto_provider();
+
     // Build a locally-owned envelope with compressed bytes plus the matching
     // EnvelopeEncodings that records which parts are zstd-encoded.
     let mut compressed_envelope = envelope.clone();
@@ -227,7 +230,6 @@ async fn post_envelope(
 
     let url = crash_url(endpoint);
     let response = reqwest::Client::builder()
-        .http2_prior_knowledge()
         .build()?
         .post(url)
         .header(AUTHORIZATION, format!("Bearer {}", token.expose_secret()))

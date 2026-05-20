@@ -8,7 +8,7 @@
 //!  3. Re-uploading the same source bytes (which compress to the same output)
 //!     returns `dedup: true`.
 
-use std::{net::SocketAddr, path::Path};
+use std::{net::SocketAddr, path::Path, sync::Once};
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use chrono::Utc;
@@ -38,6 +38,8 @@ fn compressible_payload() -> Vec<u8> {
 
 #[tokio::test]
 async fn compressed_dump_is_stored_smaller_index_records_encoding_and_dedup_works() {
+    install_default_crypto_provider();
+
     let temp = TempDir::new().expect("temp dir");
     let (addr, shutdown, handle) = spawn_server(temp.path()).await;
 
@@ -218,4 +220,11 @@ fn test_hash() -> String {
         )
         .expect("hash token")
         .to_string()
+}
+
+fn install_default_crypto_provider() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    });
 }

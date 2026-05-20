@@ -93,8 +93,9 @@ Downstream code should prefer root re-exports such as `detritus_protocol::CrashE
 
 - [API docs](https://docs.rs/detritus-protocol)
 - [Workspace](https://codeberg.org/caniko/rs-detritus)
-- [Architecture](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/architecture.md)
-- [Storage layout](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/storage.md)
+- [Documentation book](https://caniko.codeberg.page/rs-detritus/)
+- [Architecture](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/concepts/architecture.md)
+- [Storage layout](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/concepts/storage.md)
 
 ## License
 
