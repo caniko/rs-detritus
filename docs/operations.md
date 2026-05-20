@@ -164,3 +164,7 @@ detritus_janitor_blobs_freed_total
 detritus_janitor_bytes_freed_total
 detritus_janitor_cycle_duration_seconds
 ```
+
+## Ingress topologies
+
+See [Cloudflare proxy ingress evaluation](operations/cloudflare-ingress.md) for a detailed analysis of Cloudflare free-tier proxy, direct ingress, Tailscale/WireGuard, and Cloudflare Tunnel as alternatives. The evaluation helps you choose which topology fits your security and scale requirements.
