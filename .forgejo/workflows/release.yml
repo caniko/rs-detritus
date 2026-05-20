@@ -43,7 +43,31 @@ jobs:
       # Configure CARGO_REGISTRY_TOKEN in Codeberg repo Settings -> Actions -> Secrets.
       - run: cargo login "$CARGO_REGISTRY_TOKEN"
       - run: cargo publish -p detritus-protocol
-      - run: sleep 60
-      - run: cargo publish -p detritus-client
-      - run: sleep 60
+      - name: Wait for detritus-protocol on the crates.io index
+        run: |
+          ver=$(cargo pkgid -p detritus-protocol | sed 's/.*[#@]//')
+          for i in $(seq 1 60); do
+            if curl -sf "https://index.crates.io/de/tr/detritus-protocol" \
+                 | grep -q "\"vers\":\"$ver\""; then
+              echo "detritus-protocol $ver visible on index after ${i}0s"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for detritus-protocol $ver on the index" >&2
+          exit 1
       - run: cargo publish -p detritus-server
+      - name: Wait for detritus-server on the crates.io index
+        run: |
+          ver=$(cargo pkgid -p detritus-server | sed 's/.*[#@]//')
+          for i in $(seq 1 60); do
+            if curl -sf "https://index.crates.io/de/tr/detritus-server" \
+                 | grep -q "\"vers\":\"$ver\""; then
+              echo "detritus-server $ver visible on index after ${i}0s"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for detritus-server $ver on the index" >&2
+          exit 1
+      - run: cargo publish -p detritus-client
