@@ -24,6 +24,7 @@ use crate::{
     auth::token_from_extensions,
     metrics::Metrics,
     rate_limit::RateLimiter,
+    schemas::{SchemaError, SchemaKind, SchemaRegistry},
     storage::{SourceKey, StorageError, StoragePaths},
 };
 
@@ -34,14 +35,21 @@ pub(crate) struct LogsHandler {
     writers: LogWriterPool,
     rate_limiter: RateLimiter,
     metrics: Metrics,
+    schema_registry: SchemaRegistry,
 }
 
 impl LogsHandler {
-    pub(crate) fn new(writers: LogWriterPool, rate_limiter: RateLimiter, metrics: Metrics) -> Self {
+    pub(crate) fn new(
+        writers: LogWriterPool,
+        rate_limiter: RateLimiter,
+        metrics: Metrics,
+        schema_registry: SchemaRegistry,
+    ) -> Self {
         Self {
             writers,
             rate_limiter,
             metrics,
+            schema_registry,
         }
     }
 }
@@ -70,8 +78,39 @@ impl LogsHandler {
     ) -> Result<Response<ExportLogsServiceResponse>, Status> {
         validate_protocol_metadata(request.metadata())?;
         let token = token_from_extensions(request.extensions())?;
+        let resource_logs_batch = request.into_inner().resource_logs;
 
-        for resource_logs in request.into_inner().resource_logs {
+        for resource_logs in &resource_logs_batch {
+            let value = resource_logs_to_validation_value(resource_logs);
+            match self
+                .schema_registry
+                .validate(&token.project, SchemaKind::LogAttributes, &value)
+            {
+                Ok(()) => {}
+                Err(SchemaError::Validation { errors, .. }) => {
+                    self.metrics.observe_validation_failure("logs");
+                    let joined = errors
+                        .iter()
+                        .take(5)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let message = format!("log attribute validation failed: {joined}");
+                    let truncated = if message.len() > 1024 {
+                        format!("{}…", &message[..1021])
+                    } else {
+                        message
+                    };
+                    return Err(Status::invalid_argument(truncated));
+                }
+                Err(other) => {
+                    tracing::error!(error = %other, "schema registry internal error");
+                    return Err(Status::internal("schema validation internal error"));
+                }
+            }
+        }
+
+        for resource_logs in resource_logs_batch {
             let source = source_from_resource_logs(&resource_logs)?;
             if !token.permits(&source) {
                 return Err(Status::permission_denied(
@@ -257,6 +296,39 @@ async fn flush_file(file: Option<File>) -> std::io::Result<()> {
 }
 
 #[allow(clippy::result_large_err)]
+/// Builds the validation document for one [`ResourceLogs`] entry.
+///
+/// Shape: `{"resource": <resource attrs object>, "scopes": [{"name": "...",
+/// "attributes": <scope attrs object>}, ...]}`. The `project` used for the
+/// schema lookup comes from `token.project`, never from resource attributes —
+/// auth scoping is the source of authority.
+fn resource_logs_to_validation_value(resource_logs: &ResourceLogs) -> Value {
+    let resource_attrs = resource_logs.resource.as_ref().map_or_else(
+        || Value::Object(serde_json::Map::new()),
+        |r| attributes_json(&r.attributes),
+    );
+
+    let scopes: Vec<Value> = resource_logs
+        .scope_logs
+        .iter()
+        .map(|sl| {
+            let name = sl
+                .scope
+                .as_ref()
+                .map(|s| s.name.as_str())
+                .unwrap_or("")
+                .to_owned();
+            let scope_attrs = sl.scope.as_ref().map_or_else(
+                || Value::Object(serde_json::Map::new()),
+                |s| attributes_json(&s.attributes),
+            );
+            json!({ "name": name, "attributes": scope_attrs })
+        })
+        .collect();
+
+    json!({ "resource": resource_attrs, "scopes": scopes })
+}
+
 fn source_from_resource_logs(resource_logs: &ResourceLogs) -> Result<SourceKey, Status> {
     let attributes = resource_logs
         .resource

@@ -152,6 +152,7 @@ fn app(
         writers,
         state.rate_limiter.clone(),
         state.metrics.clone(),
+        state.schema_registry.clone(),
     )))
     .into_axum_router();
     let http = Router::new()
