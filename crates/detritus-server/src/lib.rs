@@ -24,8 +24,8 @@ pub use auth::{AuthConfigError, SecurityConfig, TestToken, TokenStore, load_secu
 pub use janitor::RetentionConfig;
 /// Rate-limit configuration for logs and crash uploads.
 pub use rate_limit::RateLimitConfig;
-/// Per-tenant JSON Schema registry (no-op validator in Phase 01).
-pub use schemas::SchemaRegistry;
+/// JSON Schema registry for per-tenant payload validation.
+pub use schemas::{ProjectSchemaEntry, SchemaKind, SchemaRegistry};
 /// Server configuration and serving entry points.
 pub use server::{ServerConfig, serve, serve_with_shutdown};
 

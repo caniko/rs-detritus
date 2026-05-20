@@ -42,7 +42,8 @@ pub struct ServerConfig {
     pub rate_limit: RateLimitConfig,
     /// Retention policy for logs, crash indexes, and unreferenced blobs.
     pub retention: RetentionConfig,
-    /// Per-tenant JSON Schema registry (no-op in Phase 01).
+    /// Tenant JSON Schema registry; use [`SchemaRegistry::empty`] to disable
+    /// schema validation for all tenants.
     pub schema_registry: SchemaRegistry,
 }
 
@@ -52,9 +53,6 @@ pub(crate) struct AppState {
     pub(crate) max_dump_bytes: u64,
     pub(crate) rate_limiter: RateLimiter,
     pub(crate) metrics: Metrics,
-    /// Per-tenant JSON Schema registry.  Currently a no-op; Phase 02 wires
-    /// real validation through this field.
-    #[allow(dead_code)] // Phase 02 will call schema_registry.validate(...) from handlers.
     pub(crate) schema_registry: SchemaRegistry,
 }
 

@@ -6,20 +6,19 @@
 //! [`SchemaRegistry::load`] and then held inside [`crate::server::AppState`]
 //! for the lifetime of the process.
 //!
-//! # No-op contract (Phase 01)
+//! # Validation contract
 //!
-//! [`SchemaRegistry::validate`] currently returns `Ok(())` for every
-//! *registered* `(project, kind)` pair.  For unregistered pairs it returns
-//! [`SchemaError::UnknownSchema`] so that Phase 02 inherits the correct
-//! call-site error-handling shape without any further refactoring.
-//!
-//! > **NOTE:** Do not change the no-op return to real validation without an
-//! > architecture revision.  Phase 02 is where the JSON Schema compiler is
-//! > introduced; see `docs/planning/multi-tenant-validation-and-compression/`.
+//! [`SchemaRegistry::validate`] returns `Ok(())` for any `(project, kind)`
+//! pair that has no registered schema (accept-by-default — tenants without
+//! a schema are not gated). For registered pairs it runs the compiled
+//! `jsonschema` validator and returns [`SchemaError::Validation`] with all
+//! collected errors on failure.
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
-use detritus_protocol::schema::{SchemaError, SchemaKind};
+pub(crate) use detritus_protocol::schema::SchemaError;
+pub use detritus_protocol::schema::SchemaKind;
+use jsonschema::Validator;
 use tokio::fs;
 
 /// One `[[schema]]` entry as parsed from `tokens.toml`.
@@ -36,14 +35,16 @@ pub struct ProjectSchemaEntry {
     pub path: PathBuf,
 }
 
-/// Opaque placeholder for a compiled schema.
-///
-/// In Phase 01 this is an empty sentinel behind an `Arc` so that the
-/// `HashMap` entries are cheap to clone and Phase 02 can swap the inner
-/// type without touching call-sites.
-#[derive(Debug, Clone)]
-#[allow(dead_code)] // Phase 02 will read the inner value when running real validation.
-struct CompiledSchema(Arc<()>);
+/// A compiled JSON Schema validator behind an `Arc` so registry clones
+/// stay cheap.
+#[derive(Clone)]
+struct CompiledSchema(Arc<Validator>);
+
+impl std::fmt::Debug for CompiledSchema {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompiledSchema").finish_non_exhaustive()
+    }
+}
 
 /// Registry of per-tenant JSON Schema validators, keyed by `(project, kind)`.
 ///
@@ -64,11 +65,7 @@ impl SchemaRegistry {
         }
     }
 
-    /// Loads schema files from disk and builds a registry.
-    ///
-    /// Each file is read and parsed as JSON to catch obvious on-disk
-    /// corruption at startup.  The JSON Schema compiler is *not* invoked in
-    /// this phase; that step is deferred to Phase 02.
+    /// Loads schema files from disk and compiles them with `jsonschema`.
     ///
     /// `entries` must already have their `path` fields resolved to absolute
     /// paths (i.e. relative to the tokens config's parent directory, not to
@@ -77,7 +74,8 @@ impl SchemaRegistry {
     /// # Errors
     ///
     /// Returns [`SchemaError::Io`] if a file cannot be read, or
-    /// [`SchemaError::Parse`] if the file content is not valid JSON.
+    /// [`SchemaError::Parse`] if the file content is not valid JSON or fails
+    /// to compile as a JSON Schema.
     pub async fn load(entries: &[ProjectSchemaEntry]) -> Result<Self, SchemaError> {
         let mut schemas = HashMap::with_capacity(entries.len());
         for entry in entries {
@@ -87,15 +85,18 @@ impl SchemaRegistry {
                     path: entry.path.clone(),
                     source,
                 })?;
-            // Parse to confirm valid JSON; compilation happens in Phase 02.
-            let _: serde_json::Value =
+            let value: serde_json::Value =
                 serde_json::from_str(&raw).map_err(|source| SchemaError::Parse {
                     path: entry.path.clone(),
                     source,
                 })?;
+            let validator = Validator::new(&value).map_err(|err| SchemaError::Parse {
+                path: entry.path.clone(),
+                source: serde::de::Error::custom(err.to_string()),
+            })?;
             schemas.insert(
                 (entry.project.clone(), entry.kind),
-                CompiledSchema(Arc::new(())),
+                CompiledSchema(Arc::new(validator)),
             );
         }
         Ok(Self { schemas })
@@ -103,32 +104,28 @@ impl SchemaRegistry {
 
     /// Validates `payload` against the schema registered for `(project, kind)`.
     ///
-    /// # No-op guarantee (Phase 01)
-    ///
-    /// For every *registered* `(project, kind)` pair this method currently
-    /// returns `Ok(())` unconditionally, preserving byte-identical server
-    /// behaviour relative to the pre-registry baseline.
-    ///
-    /// For *unregistered* pairs it returns [`SchemaError::UnknownSchema`] so
-    /// that Phase 02 inherits the correct error-handling shape at call-sites.
-    ///
-    /// > **NOTE:** Phase 02 wires the real validator in here.  Do not
-    /// > silently change this to real validation without an architecture
-    /// > revision and a corresponding update to this doc-comment.
+    /// Returns `Ok(())` when no schema is registered for the pair
+    /// (accept-by-default — tenants without a schema are not gated). Returns
+    /// [`SchemaError::Validation`] when a registered schema rejects the
+    /// payload, with all collected errors.
     pub fn validate(
         &self,
         project: &str,
         kind: SchemaKind,
-        _payload: &serde_json::Value,
+        payload: &serde_json::Value,
     ) -> Result<(), SchemaError> {
-        if self.schemas.contains_key(&(project.to_owned(), kind)) {
-            // NOTE: Phase 02 wires the real validator in here.
+        let Some(compiled) = self.schemas.get(&(project.to_owned(), kind)) else {
+            return Ok(());
+        };
+        let errors: Vec<String> = compiled
+            .0
+            .iter_errors(payload)
+            .map(|e| e.to_string())
+            .collect();
+        if errors.is_empty() {
             Ok(())
         } else {
-            Err(SchemaError::UnknownSchema {
-                project: project.to_owned(),
-                kind,
-            })
+            Err(SchemaError::Validation { kind, errors })
         }
     }
 }
@@ -142,34 +139,24 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{ProjectSchemaEntry, SchemaRegistry};
-    use crate::schemas::SchemaError;
 
     // ------------------------------------------------------------------
     // empty_registry_validates_anything
     // ------------------------------------------------------------------
 
-    /// An empty registry has no registered pairs, so every validate call
-    /// returns `UnknownSchema`.  But the caller (Phase 02 handlers) will only
-    /// call validate when a schema *is* registered; the empty registry is the
-    /// "no schemas configured" fast path that must not block any project.
-    ///
-    /// What we actually test here is the no-op contract: calling validate on
-    /// an empty registry for any project/kind returns `UnknownSchema` (not a
-    /// panic or unexpected error), which is the correct sentinel for
-    /// "no schema configured — Phase 02 handlers skip validation".
+    /// An empty registry accepts any payload for any project/kind. This is
+    /// the accept-by-default contract: tenants without a registered schema
+    /// are not gated.
     #[test]
     fn empty_registry_validates_anything() {
         let registry = SchemaRegistry::empty();
         let payload = json!({"key": "value"});
-        // An empty registry has no registered entries, so validate returns
-        // UnknownSchema for any project/kind — this is the no-op path that
-        // Phase 02 handlers check before calling validate.
-        let result = registry.validate("acme", SchemaKind::CrashMetadata, &payload);
         assert!(
-            matches!(result, Err(SchemaError::UnknownSchema { .. })),
-            "empty registry should return UnknownSchema, got: {result:?}",
+            registry
+                .validate("acme", SchemaKind::CrashMetadata, &payload)
+                .is_ok(),
+            "empty registry should accept any payload",
         );
-        // Confirm that an *empty* registry's `schemas` map is empty
         assert!(registry.schemas.is_empty());
     }
 
@@ -223,15 +210,14 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // unknown_project_validation_returns_unknown_schema
+    // unknown_project_accepts_by_default
     // ------------------------------------------------------------------
 
-    /// Calling validate for a project that was never registered must return
-    /// `SchemaError::UnknownSchema`, even though validate is currently a
-    /// no-op for *registered* tenants.  This ensures Phase 02 inherits the
-    /// correct error-handling shape.
+    /// Calling validate for a project that was never registered returns
+    /// `Ok(())` — accept-by-default. Only projects with a registered schema
+    /// are subject to validation.
     #[tokio::test]
-    async fn unknown_project_validation_returns_unknown_schema() {
+    async fn unknown_project_accepts_by_default() {
         let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schemas");
         let entries = vec![ProjectSchemaEntry {
             project: "known-project".to_owned(),
@@ -243,18 +229,11 @@ mod tests {
             .expect("load should succeed");
 
         let payload = json!({"x": 1});
-        let err = registry
-            .validate("nope", SchemaKind::CrashMetadata, &payload)
-            .expect_err("unknown project must return an error");
         assert!(
-            matches!(
-                err,
-                SchemaError::UnknownSchema {
-                    ref project,
-                    kind: SchemaKind::CrashMetadata,
-                } if project == "nope"
-            ),
-            "unexpected error variant: {err:?}",
+            registry
+                .validate("nope", SchemaKind::CrashMetadata, &payload)
+                .is_ok(),
+            "unknown project should be accepted by default",
         );
     }
 

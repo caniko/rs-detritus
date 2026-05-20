@@ -30,6 +30,7 @@ chrono = { workspace = true, features = ["serde"] }
 clap = { workspace = true }
 futures-util = "0.3"
 hex = "0.4"
+jsonschema = { version = "0.46", default-features = false }
 http-body-util = "0.1"
 multer = "3"
 prometheus = "0.14"

@@ -16,6 +16,7 @@ struct MetricsInner {
     request_duration_seconds: HistogramVec,
     bytes_ingested_total: IntCounterVec,
     dedup_hits_total: IntCounter,
+    validation_failures_total: IntCounterVec,
     writer_queue_depth: IntGaugeVec,
     janitor_cycles_total: IntCounter,
     janitor_blobs_freed_total: IntCounter,
@@ -53,6 +54,13 @@ impl Metrics {
         let dedup_hits_total = IntCounter::new(
             "detritus_dedup_hits_total",
             "Crash blob deduplication hits.",
+        )?;
+        let validation_failures_total = IntCounterVec::new(
+            Opts::new(
+                "detritus_validation_failures_total",
+                "Schema validation failures by endpoint.",
+            ),
+            &["endpoint"],
         )?;
         let writer_queue_depth = IntGaugeVec::new(
             Opts::new(
@@ -97,6 +105,7 @@ impl Metrics {
         registry.register(Box::new(request_duration_seconds.clone()))?;
         registry.register(Box::new(bytes_ingested_total.clone()))?;
         registry.register(Box::new(dedup_hits_total.clone()))?;
+        registry.register(Box::new(validation_failures_total.clone()))?;
         registry.register(Box::new(writer_queue_depth.clone()))?;
         registry.register(Box::new(janitor_cycles_total.clone()))?;
         registry.register(Box::new(janitor_blobs_freed_total.clone()))?;
@@ -115,6 +124,7 @@ impl Metrics {
                 request_duration_seconds,
                 bytes_ingested_total,
                 dedup_hits_total,
+                validation_failures_total,
                 writer_queue_depth,
                 janitor_cycles_total,
                 janitor_blobs_freed_total,
@@ -147,6 +157,17 @@ impl Metrics {
 
     pub(crate) fn observe_dedup_hit(&self) {
         self.inner.dedup_hits_total.inc();
+    }
+
+    /// Increments `detritus_validation_failures_total` for `endpoint`.
+    ///
+    /// Called whenever schema validation rejects an uploaded payload so that
+    /// operators can alert on per-endpoint rejection rates.
+    pub(crate) fn observe_validation_failure(&self, endpoint: &str) {
+        self.inner
+            .validation_failures_total
+            .with_label_values(&[endpoint])
+            .inc();
     }
 
     pub(crate) fn set_writer_queue_depth(&self, source_id: &str, depth: i64) {

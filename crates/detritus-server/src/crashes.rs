@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::TokenContext,
+    schemas::{SchemaError, SchemaKind},
     server::AppState,
     storage::{SourceKey, StorageError, StoragePaths},
 };
@@ -117,6 +118,19 @@ async fn crashes_inner(
         .check_crashes(token, &source)
         .await
         .map_err(|_| CrashError::RateLimited)?;
+
+    // Validate the metadata JSON against any tenant-registered schema.
+    // Tenants without a registered schema pass through unconditionally.
+    let metadata_value =
+        serde_json::to_value(&metadata).map_err(|e| CrashError::Internal(e.to_string()))?;
+    if let Err(schema_err) = state.schema_registry.validate(
+        &metadata.source.project,
+        SchemaKind::CrashMetadata,
+        &metadata_value,
+    ) {
+        state.metrics.observe_validation_failure("crashes");
+        return Err(CrashError::from_schema_error(schema_err));
+    }
 
     let mut dump = None;
     let mut attachments = Vec::new();
@@ -307,6 +321,14 @@ pub(crate) enum CrashError {
     RateLimited,
     #[error("payload exceeds maximum size of {max} bytes")]
     PayloadTooLarge { max: u64 },
+    /// Metadata failed schema validation; `errors` contains one message per
+    /// violation.  Maps to HTTP 422 Unprocessable Entity.
+    #[error("metadata schema validation failed: {}", errors.join("; "))]
+    SchemaValidation { errors: Vec<String> },
+    /// An unexpected internal error occurred (e.g. JSON serialisation of
+    /// already-deserialised metadata failed).  Maps to HTTP 500.
+    #[error("internal server error: {0}")]
+    Internal(String),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
     #[error(transparent)]
@@ -315,6 +337,15 @@ pub(crate) enum CrashError {
     Storage(#[from] StorageError),
     #[error(transparent)]
     Io(#[from] io::Error),
+}
+
+impl CrashError {
+    fn from_schema_error(err: SchemaError) -> Self {
+        match err {
+            SchemaError::Validation { errors, .. } => Self::SchemaValidation { errors },
+            other => Self::Internal(other.to_string()),
+        }
+    }
 }
 
 impl IntoResponse for CrashError {
@@ -340,6 +371,8 @@ impl CrashError {
             Self::PermissionDenied => StatusCode::FORBIDDEN,
             Self::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             Self::PayloadTooLarge { .. } => StatusCode::PAYLOAD_TOO_LARGE,
+            Self::SchemaValidation { .. } => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Storage(StorageError::InvalidComponent { .. }) => StatusCode::BAD_REQUEST,
             Self::Storage(StorageError::Io(_)) | Self::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
