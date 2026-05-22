@@ -72,7 +72,7 @@ Features are additive: disabling default features removes only optional multipar
 - Detritus protocol version: `PROTOCOL_VERSION == 1`.
 - Detritus crate version: v0.1.0.
 - OTLP scope: logs export requests, responses, records, resources, and service stubs.
-- MSRV: Rust 1.85.
+- MSRV: Rust 1.88.
 - Edition: Rust 2024.
 
 ## Public surface

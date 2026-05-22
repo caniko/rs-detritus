@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Runnable example programs for every publishable crate:
   `crash_envelope`, `install_layer`, and `embed_server`.
 - Full rustdoc coverage for the v0.1.0 public API surface.
-- Workspace MSRV declaration with `rust-version = "1.85"` inherited by each
+- Workspace MSRV declaration with `rust-version = "1.88"` inherited by each
   publishable crate.
 - Workspace lint policy enforcing `missing_docs`, `unsafe_code = forbid`,
   and strict clippy groups at warning level.

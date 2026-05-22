@@ -31,7 +31,7 @@ On every push to `trunk` and every pull request, CI runs:
 - `cargo check --workspace --all-features`
 - `cargo test --workspace --all-features`
 - `cargo doc --workspace --no-deps --all-features`
-- an MSRV check on Rust `1.85`
+- an MSRV check on Rust `1.88`
 - `cargo audit --deny warnings`
 - `cargo deny --all-features check`
 

@@ -76,7 +76,7 @@ jobs:
 
   msrv:
     runs-on: atlas
-    container: rust:1.85-bookworm
+    container: rust:1.88-bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
       - uses: https://github.com/Swatinem/rust-cache@v2

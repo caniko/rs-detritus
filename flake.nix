@@ -130,6 +130,7 @@
             pkgs.protobuf
             pkgs.rust-analyzer
           ] ++ pre-commit-check.enabledPackages;
+          shellHook = pre-commit-check.shellHook;
         };
       })
     // {

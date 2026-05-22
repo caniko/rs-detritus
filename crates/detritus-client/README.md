@@ -109,7 +109,7 @@ Each spool directory uses a filesystem lock to avoid concurrent scans by two pro
 
 - Detritus protocol version: v0.1.0 / `PROTOCOL_VERSION == 1`.
 - Receiver compatibility: `detritus-server` v0.1.0.
-- MSRV: Rust 1.85.
+- MSRV: Rust 1.88.
 - Edition: Rust 2024.
 
 ## Related crates

@@ -2,6 +2,7 @@
 **/target/
 /.direnv/
 /.envrc
+.pre-commit-config.yaml
 *.log
 *.swp
 *.swo

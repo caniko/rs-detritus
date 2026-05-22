@@ -4,7 +4,7 @@ Detritus is a Rust workspace with a Nix flake. You can build it either with Carg
 
 ## Prerequisites
 
-- Rust `1.85` or newer for direct Cargo builds
+- Rust `1.88` or newer for direct Cargo builds
 - `protoc` available on `PATH` for direct Cargo builds of the protocol crate
 - Nix with flakes enabled if you want the reproducible flake environment
 

@@ -90,7 +90,7 @@ expectations.
 
 - Detritus protocol version: v0.1.0 / `PROTOCOL_VERSION == 1`.
 - Client compatibility: `detritus-client` v0.1.0.
-- MSRV: Rust 1.85.
+- MSRV: Rust 1.88.
 - Edition: Rust 2024.
 - Binary: `detritusd`.
 
