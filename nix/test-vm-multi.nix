@@ -1,27 +1,22 @@
 /*
-  Multi-instance test VM for detritus.
+Multi-instance test VM for detritus.
 
-  Declares two independent detritus instances on the same host:
-    • instance "acme"  — listens on 0.0.0.0:4317, dataDir /var/lib/detritus-acme
-    • instance "beta"  — listens on 0.0.0.0:4318, dataDir /var/lib/detritus-beta
+Declares two independent detritus instances on the same host:
+  • instance "acme"  — listens on 0.0.0.0:4317, dataDir /var/lib/detritus-acme
+  • instance "beta"  — listens on 0.0.0.0:4318, dataDir /var/lib/detritus-beta
 
-  This VM is exposed as nixosConfigurations.detritus-multi-test-vm in flake.nix.
-  It validates that the multi-instance module path evaluates to a buildable
-  system toplevel with two separate systemd service units.
+This VM is exposed as nixosConfigurations.detritus-multi-test-vm in flake.nix.
+It validates that the multi-instance module path evaluates to a buildable
+system toplevel with two separate systemd service units.
 */
-
-{ self }:
-{
+{self}: {
   config,
   pkgs,
   ...
-}:
-
-let
+}: let
   # Shared test token content (same hash — purely for evaluation; the daemon
   # is not started in a build-only check).
-  makeTestTokens =
-    project:
+  makeTestTokens = project:
     pkgs.writeText "detritus-test-tokens-${project}.toml" ''
       [[token]]
       id = "test-token"
@@ -38,19 +33,18 @@ let
 
   acmeTokens = makeTestTokens "acme";
   betaTokens = makeTestTokens "beta";
-in
-{
+in {
   imports = [
     self.nixosModules.default
   ];
 
   system.stateVersion = "26.05";
 
-  boot.loader.grub.devices = [ "nodev" ];
+  boot.loader.grub.devices = ["nodev"];
   fileSystems."/" = {
     device = "tmpfs";
     fsType = "tmpfs";
-    options = [ "mode=0755" ];
+    options = ["mode=0755"];
   };
 
   networking.hostName = "detritus-multi-test-vm";
@@ -76,7 +70,7 @@ in
     acme = {
       bind = "0.0.0.0:4317";
       dataDir = "/var/lib/detritus-acme";
-      knownDataDirs = [ "/var/lib/detritus-acme" ];
+      knownDataDirs = ["/var/lib/detritus-acme"];
       tokensConfig = "/run/detritus-acme/tokens.toml";
       logsTtlDays = 14;
       crashesTtlDays = 90;
@@ -85,7 +79,7 @@ in
     beta = {
       bind = "0.0.0.0:4318";
       dataDir = "/var/lib/detritus-beta";
-      knownDataDirs = [ "/var/lib/detritus-beta" ];
+      knownDataDirs = ["/var/lib/detritus-beta"];
       tokensConfig = "/run/detritus-beta/tokens.toml";
       logsTtlDays = 7;
       crashesTtlDays = 30;

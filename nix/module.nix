@@ -1,80 +1,76 @@
 /*
-  detritus NixOS module — two deployment modes
-  =============================================
+detritus NixOS module — two deployment modes
+=============================================
 
-  ## Single-instance shorthand (existing API, unchanged)
+## Single-instance shorthand (existing API, unchanged)
 
-    services.detritus = {
-      enable = true;
-      bind         = "127.0.0.1:4317";
-      tokensConfig = "/run/detritus/tokens.toml";
-      # dataDir, logsTtlDays, crashesTtlDays, user, group, openFirewall…
+  services.detritus = {
+    enable = true;
+    bind         = "127.0.0.1:4317";
+    tokensConfig = "/run/detritus/tokens.toml";
+    # dataDir, logsTtlDays, crashesTtlDays, user, group, openFirewall…
+  };
+
+This produces a single systemd unit named `detritus.service`, owned by
+the `detritus` user/group, exactly as before the multi-instance refactor.
+DO NOT set any `services.detritus.instances.*` key at the same time —
+the module raises an assertion failure if you mix both forms.
+
+## Multi-instance attrset (new API)
+
+  services.detritus.instances = {
+    "acme" = {
+      bind         = "0.0.0.0:4317";
+      dataDir      = "/var/lib/detritus-acme";
+      tokensConfig = "/run/secrets/detritus-acme.toml";
+      user         = "detritus-acme";   # default: "detritus-<name>"
+      group        = "detritus-acme";   # default: "detritus-<name>"
+      openFirewall = true;
     };
-
-  This produces a single systemd unit named `detritus.service`, owned by
-  the `detritus` user/group, exactly as before the multi-instance refactor.
-  DO NOT set any `services.detritus.instances.*` key at the same time —
-  the module raises an assertion failure if you mix both forms.
-
-  ## Multi-instance attrset (new API)
-
-    services.detritus.instances = {
-      "acme" = {
-        bind         = "0.0.0.0:4317";
-        dataDir      = "/var/lib/detritus-acme";
-        tokensConfig = "/run/secrets/detritus-acme.toml";
-        user         = "detritus-acme";   # default: "detritus-<name>"
-        group        = "detritus-acme";   # default: "detritus-<name>"
-        openFirewall = true;
-      };
-      "beta" = {
-        bind         = "0.0.0.0:4318";
-        dataDir      = "/var/lib/detritus-beta";
-        tokensConfig = "/run/secrets/detritus-beta.toml";
-      };
+    "beta" = {
+      bind         = "0.0.0.0:4318";
+      dataDir      = "/var/lib/detritus-beta";
+      tokensConfig = "/run/secrets/detritus-beta.toml";
     };
+  };
 
-  Each instance produces:
-    • systemd.services."detritus-<name>"
-    • users.users."<user>"  + users.groups."<group>"
-    • A tokens-preflight script baked with its own user/group
-    • A firewall port opening when openFirewall = true
-    • BindReadOnlyPaths for schemaDir (when non-null)
+Each instance produces:
+  • systemd.services."detritus-<name>"
+  • users.users."<user>"  + users.groups."<group>"
+  • A tokens-preflight script baked with its own user/group
+  • A firewall port opening when openFirewall = true
+  • BindReadOnlyPaths for schemaDir (when non-null)
 
-  ## Per-instance option defaults
+## Per-instance option defaults
 
-    bind            = "127.0.0.1:4317"
-    dataDir         = "/var/lib/detritus-<name>"
-    knownDataDirs   = [ dataDir ]
-    logsTtlDays     = 14
-    crashesTtlDays  = 90
-    user            = "detritus-<name>"
-    group           = "detritus-<name>"
-    openFirewall    = false
-    schemaDir       = null
+  bind            = "127.0.0.1:4317"
+  dataDir         = "/var/lib/detritus-<name>"
+  knownDataDirs   = [ dataDir ]
+  logsTtlDays     = 14
+  crashesTtlDays  = 90
+  user            = "detritus-<name>"
+  group           = "detritus-<name>"
+  openFirewall    = false
+  schemaDir       = null
 
-  ## User/group naming convention
+## User/group naming convention
 
-  Explicit instances use "detritus-<name>" by default to avoid colliding
-  with the historic "detritus" system user created by the single-instance
-  shorthand. If you want instances to share a system user, set `user` and
-  `group` explicitly on both.
+Explicit instances use "detritus-<name>" by default to avoid colliding
+with the historic "detritus" system user created by the single-instance
+shorthand. If you want instances to share a system user, set `user` and
+`group` explicitly on both.
 
-  ## NOTE on systemd unit names
+## NOTE on systemd unit names
 
-  Single-instance shorthand → `detritus.service`  (backward-compatible)
-  Multi-instance attrset    → `detritus-<name>.service`  (new)
+Single-instance shorthand → `detritus.service`  (backward-compatible)
+Multi-instance attrset    → `detritus-<name>.service`  (new)
 */
-
-{ self }:
-{
+{self}: {
   config,
   lib,
   pkgs,
   ...
-}:
-
-let
+}: let
   cfg = config.services.detritus;
 
   # ---------------------------------------------------------------------------
@@ -90,8 +86,7 @@ let
   # Build one tokens-preflight shell script for a given instance config.
   # scriptSuffix: appended to "detritus-token-preflight" (pass "" for the
   # legacy single-instance case to preserve the historic store-path name).
-  makeTokenPreflight =
-    scriptSuffix: instanceCfg:
+  makeTokenPreflight = scriptSuffix: instanceCfg:
     pkgs.writeShellScript "detritus-token-preflight${scriptSuffix}" ''
       set -eu
 
@@ -109,180 +104,179 @@ let
   # unitName: the key under systemd.services (e.g. "detritus" or "detritus-acme").
   # isLegacyDefault: true when synthesised from the single-instance shorthand —
   #   controls StateDirectory (use "detritus", not "detritus-default").
-  makeServiceConfig =
-    unitName: isLegacyDefault: instanceCfg:
-    let
-      # Use empty suffix for the legacy default to keep the historic store-path name.
-      scriptSuffix = if isLegacyDefault then "" else "-${instanceCfg.name}";
-      tokenPreflight = makeTokenPreflight scriptSuffix instanceCfg;
-      legacyDefaultDataDir = "/var/lib/detritus";
-      useStateDir =
-        if isLegacyDefault then
-          toString instanceCfg.dataDir == legacyDefaultDataDir
-        else
-          toString instanceCfg.dataDir == instanceDefaultDataDir instanceCfg.name;
-      stateDirectoryName =
-        if isLegacyDefault then "detritus" else "detritus-${instanceCfg.name}";
-    in
-    {
-      description = "detritus log and crash dump receiver [${instanceCfg.name}]";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "network-online.target" ];
-      wants = [ "network-online.target" ];
+  makeServiceConfig = unitName: isLegacyDefault: instanceCfg: let
+    # Use empty suffix for the legacy default to keep the historic store-path name.
+    scriptSuffix =
+      if isLegacyDefault
+      then ""
+      else "-${instanceCfg.name}";
+    tokenPreflight = makeTokenPreflight scriptSuffix instanceCfg;
+    legacyDefaultDataDir = "/var/lib/detritus";
+    useStateDir =
+      if isLegacyDefault
+      then toString instanceCfg.dataDir == legacyDefaultDataDir
+      else toString instanceCfg.dataDir == instanceDefaultDataDir instanceCfg.name;
+    stateDirectoryName =
+      if isLegacyDefault
+      then "detritus"
+      else "detritus-${instanceCfg.name}";
+  in {
+    description = "detritus log and crash dump receiver [${instanceCfg.name}]";
+    wantedBy = ["multi-user.target"];
+    after = ["network-online.target"];
+    wants = ["network-online.target"];
 
-      serviceConfig =
-        {
-          Type = "simple";
-          ExecStartPre = "+${tokenPreflight}";
-          ExecStart = "${instanceCfg.package}/bin/detritusd ${lib.escapeShellArgs [
-            "--bind"
-            instanceCfg.bind
-            "--data-dir"
-            (toString instanceCfg.dataDir)
-            "--tokens-config"
-            (toString instanceCfg.tokensConfig)
-            "--logs-ttl-days"
-            (toString instanceCfg.logsTtlDays)
-            "--crashes-ttl-days"
-            (toString instanceCfg.crashesTtlDays)
-            "--log-format"
-            "json"
-          ]}";
-          Restart = "on-failure";
-          RestartSec = "10s";
-          User = instanceCfg.user;
-          Group = instanceCfg.group;
-          StateDirectoryMode = "0750";
-          ReadWritePaths = [ (toString instanceCfg.dataDir) ] ++ lib.optional (instanceCfg.schemaDir != null) (toString instanceCfg.schemaDir);
-          ProtectSystem = "strict";
-          ProtectHome = true;
-          PrivateTmp = true;
-          PrivateDevices = true;
-          NoNewPrivileges = true;
-          RestrictAddressFamilies = [
-            "AF_INET"
-            "AF_INET6"
-            "AF_UNIX"
-          ];
-          RestrictNamespaces = true;
-          RestrictRealtime = true;
-          LockPersonality = true;
-          MemoryDenyWriteExecute = true;
-          ProtectClock = true;
-          ProtectControlGroups = true;
-          ProtectKernelLogs = true;
-          ProtectKernelModules = true;
-          ProtectKernelTunables = true;
-          SystemCallArchitectures = "native";
-          CapabilityBoundingSet = "";
-        }
-        // lib.optionalAttrs useStateDir { StateDirectory = stateDirectoryName; }
-        // lib.optionalAttrs (instanceCfg.schemaDir != null) {
-          BindReadOnlyPaths = [ (toString instanceCfg.schemaDir) ];
-        };
-    };
+    serviceConfig =
+      {
+        Type = "simple";
+        ExecStartPre = "+${tokenPreflight}";
+        ExecStart = "${instanceCfg.package}/bin/detritusd ${lib.escapeShellArgs [
+          "--bind"
+          instanceCfg.bind
+          "--data-dir"
+          (toString instanceCfg.dataDir)
+          "--tokens-config"
+          (toString instanceCfg.tokensConfig)
+          "--logs-ttl-days"
+          (toString instanceCfg.logsTtlDays)
+          "--crashes-ttl-days"
+          (toString instanceCfg.crashesTtlDays)
+          "--log-format"
+          "json"
+        ]}";
+        Restart = "on-failure";
+        RestartSec = "10s";
+        User = instanceCfg.user;
+        Group = instanceCfg.group;
+        StateDirectoryMode = "0750";
+        ReadWritePaths = [(toString instanceCfg.dataDir)] ++ lib.optional (instanceCfg.schemaDir != null) (toString instanceCfg.schemaDir);
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        PrivateDevices = true;
+        NoNewPrivileges = true;
+        RestrictAddressFamilies = [
+          "AF_INET"
+          "AF_INET6"
+          "AF_UNIX"
+        ];
+        RestrictNamespaces = true;
+        RestrictRealtime = true;
+        LockPersonality = true;
+        MemoryDenyWriteExecute = true;
+        ProtectClock = true;
+        ProtectControlGroups = true;
+        ProtectKernelLogs = true;
+        ProtectKernelModules = true;
+        ProtectKernelTunables = true;
+        SystemCallArchitectures = "native";
+        CapabilityBoundingSet = "";
+      }
+      // lib.optionalAttrs useStateDir {StateDirectory = stateDirectoryName;}
+      // lib.optionalAttrs (instanceCfg.schemaDir != null) {
+        BindReadOnlyPaths = [(toString instanceCfg.schemaDir)];
+      };
+  };
 
   # ---------------------------------------------------------------------------
   # Instance submodule
   # ---------------------------------------------------------------------------
 
-  instanceSubmodule =
-    { name, ... }:
-    {
-      options = {
-        # Expose the instance name for use in makeTokenPreflight / makeServiceConfig.
-        name = lib.mkOption {
-          type = lib.types.str;
-          default = name;
-          internal = true;
-          description = "Instance name (derived from the attribute key).";
-        };
+  instanceSubmodule = {name, ...}: {
+    options = {
+      # Expose the instance name for use in makeTokenPreflight / makeServiceConfig.
+      name = lib.mkOption {
+        type = lib.types.str;
+        default = name;
+        internal = true;
+        description = "Instance name (derived from the attribute key).";
+      };
 
-        package = lib.mkOption {
-          type = lib.types.package;
-          default = self.packages.${pkgs.stdenv.hostPlatform.system}.detritus;
-          defaultText = lib.literalExpression "self.packages.\${pkgs.stdenv.hostPlatform.system}.detritus";
-          description = "detritus package to run for this instance.";
-        };
+      package = lib.mkOption {
+        type = lib.types.package;
+        default = self.packages.${pkgs.stdenv.hostPlatform.system}.detritus;
+        defaultText = lib.literalExpression "self.packages.\${pkgs.stdenv.hostPlatform.system}.detritus";
+        description = "detritus package to run for this instance.";
+      };
 
-        bind = lib.mkOption {
-          type = lib.types.str;
-          default = "127.0.0.1:4317";
-          description = "Socket address detritusd listens on.";
-        };
+      bind = lib.mkOption {
+        type = lib.types.str;
+        default = "127.0.0.1:4317";
+        description = "Socket address detritusd listens on.";
+      };
 
-        dataDir = lib.mkOption {
-          type = lib.types.path;
-          default = instanceDefaultDataDir name;
-          description = ''
-            Persistent storage root for logs, crash blobs, indexes, and
-            temporary upload files.
+      dataDir = lib.mkOption {
+        type = lib.types.path;
+        default = instanceDefaultDataDir name;
+        description = ''
+          Persistent storage root for logs, crash blobs, indexes, and
+          temporary upload files.
 
-            Changing this after deployment does not migrate existing data.
-            Add intentional historical paths to knownDataDirs before changing
-            this option.
-          '';
-        };
+          Changing this after deployment does not migrate existing data.
+          Add intentional historical paths to knownDataDirs before changing
+          this option.
+        '';
+      };
 
-        knownDataDirs = lib.mkOption {
-          type = lib.types.listOf lib.types.path;
-          default = [ (instanceDefaultDataDir name) ];
-          description = "Approved persistent data directories for this instance.";
-        };
+      knownDataDirs = lib.mkOption {
+        type = lib.types.listOf lib.types.path;
+        default = [(instanceDefaultDataDir name)];
+        description = "Approved persistent data directories for this instance.";
+      };
 
-        tokensConfig = lib.mkOption {
-          type = lib.types.path;
-          description = "TOML file containing Argon2-hashed bearer-token entries.";
-        };
+      tokensConfig = lib.mkOption {
+        type = lib.types.path;
+        description = "TOML file containing Argon2-hashed bearer-token entries.";
+      };
 
-        logsTtlDays = lib.mkOption {
-          type = lib.types.ints.positive;
-          default = 14;
-          description = "Number of days to retain log NDJSON files.";
-        };
+      logsTtlDays = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 14;
+        description = "Number of days to retain log NDJSON files.";
+      };
 
-        crashesTtlDays = lib.mkOption {
-          type = lib.types.ints.positive;
-          default = 90;
-          description = "Number of days to retain crash source indexes and referenced blobs.";
-        };
+      crashesTtlDays = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 90;
+        description = "Number of days to retain crash source indexes and referenced blobs.";
+      };
 
-        user = lib.mkOption {
-          type = lib.types.str;
-          default = "detritus-${name}";
-          description = "System user account used to run this detritusd instance.";
-        };
+      user = lib.mkOption {
+        type = lib.types.str;
+        default = "detritus-${name}";
+        description = "System user account used to run this detritusd instance.";
+      };
 
-        group = lib.mkOption {
-          type = lib.types.str;
-          default = "detritus-${name}";
-          description = "System group used to run this detritusd instance.";
-        };
+      group = lib.mkOption {
+        type = lib.types.str;
+        default = "detritus-${name}";
+        description = "System group used to run this detritusd instance.";
+      };
 
-        openFirewall = lib.mkOption {
-          type = lib.types.bool;
-          default = false;
-          description = "Open this instance's TCP port in the host firewall.";
-        };
+      openFirewall = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Open this instance's TCP port in the host firewall.";
+      };
 
-        schemaDir = lib.mkOption {
-          type = lib.types.nullOr lib.types.path;
-          default = null;
-          description = ''
-            Optional directory of JSON Schema files referenced by this
-            instance's tokensConfig [[schema]] entries. When non-null, the
-            directory is bind-mounted read-only into the service.
-          '';
-        };
+      schemaDir = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = ''
+          Optional directory of JSON Schema files referenced by this
+          instance's tokensConfig [[schema]] entries. When non-null, the
+          directory is bind-mounted read-only into the service.
+        '';
       };
     };
+  };
 
   # ---------------------------------------------------------------------------
   # Derived values: figure out which instances are actually active.
   # ---------------------------------------------------------------------------
 
   # True when the user set at least one `services.detritus.instances.*` key.
-  hasExplicitInstances = cfg.instances != { };
+  hasExplicitInstances = cfg.instances != {};
 
   # True when the user set the single-instance shorthand (enable = true without instances).
   isShorthand = cfg.enable && !hasExplicitInstances;
@@ -294,25 +288,24 @@ let
   # group = "detritus" (NOT "detritus-default") so that existing hosts that
   # already have the "detritus" system user/group don't break on upgrade (F4).
   activeInstances =
-    if hasExplicitInstances then
-      cfg.instances
-    else
-      {
-        default = {
-          name = "default";
-          package = cfg.package;
-          bind = cfg.bind;
-          dataDir = cfg.dataDir;
-          knownDataDirs = cfg.knownDataDirs;
-          tokensConfig = cfg.tokensConfig;
-          logsTtlDays = cfg.logsTtlDays;
-          crashesTtlDays = cfg.crashesTtlDays;
-          user = cfg.user;
-          group = cfg.group;
-          openFirewall = cfg.openFirewall;
-          schemaDir = null;
-        };
+    if hasExplicitInstances
+    then cfg.instances
+    else {
+      default = {
+        name = "default";
+        package = cfg.package;
+        bind = cfg.bind;
+        dataDir = cfg.dataDir;
+        knownDataDirs = cfg.knownDataDirs;
+        tokensConfig = cfg.tokensConfig;
+        logsTtlDays = cfg.logsTtlDays;
+        crashesTtlDays = cfg.crashesTtlDays;
+        user = cfg.user;
+        group = cfg.group;
+        openFirewall = cfg.openFirewall;
+        schemaDir = null;
       };
+    };
 
   # For each instance, collect the TCP port (as an int) for firewall rules.
   activePorts = lib.concatMap (
@@ -322,17 +315,21 @@ let
   # Build the systemd services attrset.
   # The shorthand "default" instance uses the historic unit name "detritus"
   # (not "detritus-default") for backward-compatibility.
-  serviceAttrset = lib.mapAttrs' (
-    name: inst:
-    let
-      unitName = if (name == "default" && isShorthand) then "detritus" else "detritus-${name}";
-    in
-    lib.nameValuePair unitName (makeServiceConfig unitName (name == "default" && isShorthand) inst)
-  ) activeInstances;
+  serviceAttrset =
+    lib.mapAttrs' (
+      name: inst: let
+        unitName =
+          if (name == "default" && isShorthand)
+          then "detritus"
+          else "detritus-${name}";
+      in
+        lib.nameValuePair unitName (makeServiceConfig unitName (name == "default" && isShorthand) inst)
+    )
+    activeInstances;
 
   # Build systemd.tmpfiles rules for each instance.
   tmpfilesRules = lib.concatMap (
-    inst: [ "d ${toString inst.dataDir} 0750 ${inst.user} ${inst.group} -" ]
+    inst: ["d ${toString inst.dataDir} 0750 ${inst.user} ${inst.group} -"]
   ) (lib.attrValues activeInstances);
 
   # Collect all unique (user, group) pairs for users.users / users.groups.
@@ -344,15 +341,18 @@ let
   # Build users.users entries for every instance (deduplicated by user name).
   usersAttrset = lib.listToAttrs (
     lib.unique (
-      map (inst: lib.nameValuePair inst.user { isSystemUser = true; group = inst.group; }) instanceUsers
+      map (inst:
+        lib.nameValuePair inst.user {
+          isSystemUser = true;
+          group = inst.group;
+        })
+      instanceUsers
     )
   );
 
   # Build users.groups entries for every unique group.
-  groupsAttrset = lib.listToAttrs (map (g: lib.nameValuePair g { }) uniqueGroups);
-
-in
-{
+  groupsAttrset = lib.listToAttrs (map (g: lib.nameValuePair g {}) uniqueGroups);
+in {
   options.services.detritus = {
     # -------------------------------------------------------------------------
     # Single-instance shorthand (top-level options) — keep all existing options
@@ -389,7 +389,7 @@ in
 
     knownDataDirs = lib.mkOption {
       type = lib.types.listOf lib.types.path;
-      default = [ "/var/lib/detritus" ];
+      default = ["/var/lib/detritus"];
       description = "Approved persistent data directories. This guards against accidental dataDir changes. (Single-instance shorthand.)";
     };
 
@@ -435,7 +435,7 @@ in
 
     instances = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule instanceSubmodule);
-      default = { };
+      default = {};
       description = ''
         Independent detritus instances. Each entry produces its own
         systemd service unit, user, group, data directory, and bound
@@ -449,11 +449,10 @@ in
     };
   };
 
-  config =
-    let
-      # Any instance active (either from shorthand or explicit)?
-      anyActive = isShorthand || hasExplicitInstances;
-    in
+  config = let
+    # Any instance active (either from shorthand or explicit)?
+    anyActive = isShorthand || hasExplicitInstances;
+  in
     lib.mkIf anyActive {
       assertions =
         [
@@ -491,14 +490,14 @@ in
             services.detritus.instances.${name}.dataDir is ${toString inst.dataDir}, which is
             not in services.detritus.instances.${name}.knownDataDirs.
           '';
-        }) cfg.instances
+        })
+        cfg.instances
         # No two instances may share the same dataDir.
         ++ (
           let
             dataDirs = map (i: toString i.dataDir) (lib.attrValues activeInstances);
             uniqueDataDirs = lib.unique dataDirs;
-          in
-          [
+          in [
             {
               assertion = lib.length dataDirs == lib.length uniqueDataDirs;
               message = ''
@@ -514,8 +513,7 @@ in
           let
             ports = map (i: bindPortOf i.bind) (lib.attrValues activeInstances);
             uniquePorts = lib.unique ports;
-          in
-          [
+          in [
             {
               assertion = lib.length ports == lib.length uniquePorts;
               message = ''

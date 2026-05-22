@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "crates/detritus-client",
-    "crates/detritus-protocol",
-    "crates/detritus-server",
+  "crates/detritus-client",
+  "crates/detritus-protocol",
+  "crates/detritus-server",
 ]
 resolver = "3"
 
@@ -58,11 +58,22 @@ trivially_copy_pass_by_ref = "allow"
 [workspace.dependencies]
 chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
-reqwest = { version = "0.13.3", default-features = false, features = ["rustls-no-provider", "http2"] }
-rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "aws_lc_rs"] }
+reqwest = { version = "0.13.3", default-features = false, features = [
+  "rustls-no-provider",
+  "http2",
+] }
+rustls = { version = "0.23", default-features = false, features = [
+  "std",
+  "tls12",
+  "aws_lc_rs",
+] }
 thiserror = "2.0"
 tokio = { version = "1", features = ["rt", "sync", "time"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "json", "env-filter"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+  "fmt",
+  "json",
+  "env-filter",
+] }
 uuid = { version = "1.10", features = ["v4"] }
 zstd = "0.13"

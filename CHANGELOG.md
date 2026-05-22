@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   descriptions, keywords, categories, homepage, repository, documentation, and
   per-crate README paths.
 - Workspace README crate overview for the published package set.
+- Simit-managed formatting flake check, with repository files normalized to the
+  generated formatter before publication.
 
 ### Changed
 

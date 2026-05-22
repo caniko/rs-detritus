@@ -60,9 +60,9 @@ cargo run --example crash_envelope -p detritus-protocol
 
 ## Feature flags
 
-| Feature | Default | Effect |
-| --- | --- | --- |
-| `multipart` | yes | Enables `CrashEnvelope` multipart read/write helpers and `multipart::DEFAULT_BOUNDARY`. |
+| Feature     | Default | Effect                                                                                  |
+| ----------- | ------- | --------------------------------------------------------------------------------------- |
+| `multipart` | yes     | Enables `CrashEnvelope` multipart read/write helpers and `multipart::DEFAULT_BOUNDARY`. |
 
 The base schema types and OTLP log facade are always available.
 Features are additive: disabling default features removes only optional multipart helpers.

@@ -13,14 +13,14 @@ categories = ["network-programming", "encoding"]
 readme = "README.md"
 documentation = "https://docs.rs/detritus-protocol"
 include = [
-    "Cargo.toml",
-    "LICENSE",
-    "README.md",
-    "build.rs",
-    "examples/**",
-    "proto/**",
-    "src/**",
-    "tests/**",
+  "Cargo.toml",
+  "LICENSE",
+  "README.md",
+  "build.rs",
+  "examples/**",
+  "proto/**",
+  "src/**",
+  "tests/**",
 ]
 
 [features]

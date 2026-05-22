@@ -1,11 +1,8 @@
-{ self }:
-{
+{self}: {
   config,
   pkgs,
   ...
-}:
-
-let
+}: let
   testTokens = pkgs.writeText "detritus-test-tokens.toml" ''
     [[token]]
     id = "test-token"
@@ -19,19 +16,18 @@ let
     crashes_per_minute = 30
     crashes_burst = 5
   '';
-in
-{
+in {
   imports = [
     self.nixosModules.default
   ];
 
   system.stateVersion = "26.05";
 
-  boot.loader.grub.devices = [ "nodev" ];
+  boot.loader.grub.devices = ["nodev"];
   fileSystems."/" = {
     device = "tmpfs";
     fsType = "tmpfs";
-    options = [ "mode=0755" ];
+    options = ["mode=0755"];
   };
 
   networking.hostName = "detritus-test-vm";

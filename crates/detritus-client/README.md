@@ -89,9 +89,9 @@ cargo run --example install_layer -p detritus-client
 
 ## Feature flags
 
-| Feature | Default | Effect |
-| --- | --- | --- |
-| `minidump` | yes | Enables native minidump support on non-Android targets through `minidumper-child`. |
+| Feature    | Default | Effect                                                                             |
+| ---------- | ------- | ---------------------------------------------------------------------------------- |
+| `minidump` | yes     | Enables native minidump support on non-Android targets through `minidumper-child`. |
 
 Disabling default features keeps the tracing layer, panic tarball capture, and offline shipper.
 Native minidumps are not used on Android; use `PanicKind::PanicTarball` there.

@@ -8,17 +8,23 @@ homepage.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 description = "Client SDK for Detritus telemetry and crash reporting"
-keywords = ["observability", "tracing-subscriber", "crash-reporting", "panic-hook", "telemetry"]
+keywords = [
+  "observability",
+  "tracing-subscriber",
+  "crash-reporting",
+  "panic-hook",
+  "telemetry",
+]
 categories = ["development-tools", "network-programming"]
 readme = "README.md"
 documentation = "https://docs.rs/detritus-client"
 include = [
-    "Cargo.toml",
-    "LICENSE",
-    "README.md",
-    "examples/**",
-    "src/**",
-    "tests/**",
+  "Cargo.toml",
+  "LICENSE",
+  "README.md",
+  "examples/**",
+  "src/**",
+  "tests/**",
 ]
 
 [features]
@@ -33,7 +39,9 @@ path = "src/lib.rs"
 workspace = true
 
 [dependencies]
-detritus-protocol = { path = "../detritus-protocol", version = "0.1.0", features = ["multipart"] }
+detritus-protocol = { path = "../detritus-protocol", version = "0.1.0", features = [
+  "multipart",
+] }
 
 chrono = { workspace = true, features = ["serde"] }
 flate2 = "1"
@@ -48,7 +56,13 @@ serde_json = "1"
 tar = "0.4"
 thiserror = { workspace = true }
 zstd = { workspace = true }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync", "time"] }
+tokio = { version = "1", features = [
+  "rt-multi-thread",
+  "macros",
+  "fs",
+  "sync",
+  "time",
+] }
 tonic = "0.13"
 tracing = "0.1"
 tracing-core = "0.1"
@@ -63,7 +77,9 @@ minidumper-child = { version = "0.3", optional = true }
 argon2 = "0.5"
 detritus-server = { path = "../detritus-server", version = "0.1.0" }
 tempfile = "3"
-tokio-rustls = { version = "0.26", default-features = false, features = ["aws_lc_rs"] }
+tokio-rustls = { version = "0.26", default-features = false, features = [
+  "aws_lc_rs",
+] }
 
 [package.metadata.docs.rs]
 all-features = true
