@@ -17,7 +17,7 @@ env:
 jobs:
   fmt:
     runs-on: atlas
-    container: rust:latest-bookworm
+    container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
       - uses: https://github.com/Swatinem/rust-cache@v2
@@ -29,7 +29,7 @@ jobs:
 
   clippy:
     runs-on: atlas
-    container: rust:latest-bookworm
+    container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
       - uses: https://github.com/Swatinem/rust-cache@v2
@@ -41,7 +41,7 @@ jobs:
 
   check:
     runs-on: atlas
-    container: rust:latest-bookworm
+    container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
       - uses: https://github.com/Swatinem/rust-cache@v2
@@ -52,7 +52,7 @@ jobs:
 
   test:
     runs-on: atlas
-    container: rust:latest-bookworm
+    container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
       - uses: https://github.com/Swatinem/rust-cache@v2
@@ -63,7 +63,7 @@ jobs:
 
   doc:
     runs-on: atlas
-    container: rust:latest-bookworm
+    container: rust:bookworm
     env:
       RUSTDOCFLAGS: "-D warnings"
     steps:
@@ -87,7 +87,7 @@ jobs:
 
   publish-dry-run:
     runs-on: atlas
-    container: rust:latest-bookworm
+    container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
       - uses: https://github.com/Swatinem/rust-cache@v2
@@ -106,7 +106,7 @@ jobs:
 
   audit:
     runs-on: atlas
-    container: rust:latest-bookworm
+    container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
       - uses: https://github.com/Swatinem/rust-cache@v2
@@ -118,7 +118,7 @@ jobs:
 
   deny:
     runs-on: atlas
-    container: rust:latest-bookworm
+    container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
       - uses: https://github.com/Swatinem/rust-cache@v2

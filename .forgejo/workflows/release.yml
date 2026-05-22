@@ -16,7 +16,7 @@ env:
 jobs:
   verify:
     runs-on: atlas
-    container: rust:latest-bookworm
+    container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
       - uses: https://github.com/Swatinem/rust-cache@v2
@@ -31,7 +31,7 @@ jobs:
   publish:
     needs: verify
     runs-on: atlas
-    container: rust:latest-bookworm
+    container: rust:bookworm
     env:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
     steps:
