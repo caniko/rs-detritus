@@ -5,7 +5,6 @@
 
 use std::sync::Arc;
 
-use rcgen::generate_simple_self_signed;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -15,10 +14,12 @@ use tokio_rustls::{
     rustls::{
         NamedGroup, ServerConfig,
         crypto::{self, CryptoProvider},
-        pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer},
+        pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
     },
 };
 
+const CERT_PEM: &[u8] = include_bytes!("fixtures/tls/localhost-cert.pem");
+const KEY_PEM: &[u8] = include_bytes!("fixtures/tls/localhost-key.pem");
 const RESPONSE_BODY: &str = "ok";
 
 #[tokio::test(flavor = "multi_thread")]
@@ -29,10 +30,10 @@ async fn aws_lc_rs_provider_drives_real_tls_handshake() {
         .expect("provider installed by install_default_crypto_provider");
     assert_provider_looks_like_aws_lc(provider);
 
-    let cert = generate_simple_self_signed(vec!["localhost".to_owned()])
-        .expect("generate self-signed localhost cert");
-    let cert_der = CertificateDer::from(cert.cert.der().to_vec());
-    let key_der = PrivateKeyDer::from(PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der()));
+    let cert_der = CertificateDer::from_pem_slice(CERT_PEM)
+        .expect("load localhost test certificate from PEM fixture");
+    let key_der = PrivateKeyDer::from_pem_slice(KEY_PEM)
+        .expect("load localhost test private key from PEM fixture");
 
     let server_config = ServerConfig::builder()
         .with_no_client_auth()

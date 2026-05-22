@@ -12,6 +12,14 @@ keywords = ["observability", "otlp", "crash-reporting", "server", "telemetry"]
 categories = ["command-line-utilities", "web-programming", "network-programming"]
 readme = "README.md"
 documentation = "https://docs.rs/detritus-server"
+include = [
+    "Cargo.toml",
+    "LICENSE",
+    "README.md",
+    "examples/**",
+    "src/**",
+    "tests/**",
+]
 
 [[bin]]
 name = "detritusd"

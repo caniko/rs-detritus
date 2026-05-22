@@ -4,26 +4,41 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    rust-overlay.url = "github:oxalica/rust-overlay";
     crane.url = "github:ipetkov/crane";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
+    git-hooks.url = "github:cachix/git-hooks.nix";
   };
 
   outputs = {
     self,
     nixpkgs,
     flake-utils,
+    rust-overlay,
     crane,
+    treefmt-nix,
+    git-hooks,
     ...
   }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = import nixpkgs { inherit system; };
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [(import rust-overlay)];
+        };
         lib = pkgs.lib;
-        craneLib = crane.mkLib pkgs;
+        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+          extensions = ["rustfmt" "clippy"];
+        };
+        craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
         src = pkgs.lib.fileset.toSource {
           root = ./.;
           fileset = pkgs.lib.fileset.unions [
             (craneLib.fileset.commonCargoSources ./.)
+            ./crates/detritus-client/tests
             ./crates/detritus-protocol/proto
+            ./crates/detritus-protocol/tests
+            ./crates/detritus-server/tests
           ];
         };
 
@@ -37,9 +52,19 @@
           version = "0.1.0";
           cargoExtraArgs = "-p detritus-server";
           strictDeps = true;
+          SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
+          NIX_SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
         };
 
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+        treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix);
+        pre-commit-check = git-hooks.lib.${system}.run {
+          src = ./.;
+          hooks = import ./nix/pre-commit.nix {
+            inherit pkgs rustToolchain;
+            treefmtWrapper = treefmtEval.config.build.wrapper;
+          };
+        };
 
         detritus = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
@@ -91,15 +116,20 @@
           });
         };
 
+        formatter = treefmtEval.config.build.wrapper;
+
         devShells.default = craneLib.devShell {
-          checks = self.checks.${system};
+          checks = builtins.removeAttrs self.checks.${system} ["pre-commit"];
           packages = [
+            pkgs.cargo-audit
+            pkgs.cargo-deny
             pkgs.cargo-nextest
             pkgs.mdbook
             pkgs.pkg-config
+            pkgs.pre-commit
             pkgs.protobuf
             pkgs.rust-analyzer
-          ];
+          ] ++ pre-commit-check.enabledPackages;
         };
       })
     // {

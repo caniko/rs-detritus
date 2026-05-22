@@ -11,3 +11,5 @@
 result
 result-*
 docs/book/
+*.pem
+!crates/detritus-client/tests/fixtures/**/*.pem

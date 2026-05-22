@@ -12,6 +12,16 @@ keywords = ["observability", "otlp", "telemetry", "crash-reporting", "protocol"]
 categories = ["network-programming", "encoding"]
 readme = "README.md"
 documentation = "https://docs.rs/detritus-protocol"
+include = [
+    "Cargo.toml",
+    "LICENSE",
+    "README.md",
+    "build.rs",
+    "examples/**",
+    "proto/**",
+    "src/**",
+    "tests/**",
+]
 
 [features]
 default = ["multipart"]

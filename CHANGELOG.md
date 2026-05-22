@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-05-22
+
 ### Added
 
 - Per-crate `README.md` files for `detritus-protocol`, `detritus-client`,
@@ -45,3 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Per-file `#![warn(missing_docs)]` configuration in favor of the workspace lint
   policy.
+
+[Unreleased]: https://codeberg.org/caniko/rs-detritus/compare/v0.1.0...HEAD
+[0.1.0]: https://codeberg.org/caniko/rs-detritus/releases/tag/v0.1.0
