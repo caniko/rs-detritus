@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v[0-9]*.[0-9]*.[0-9]*"
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -40,8 +41,13 @@ jobs:
         with:
           shared-key: ${{ github.workflow }}
           cache-on-failure: true
-      # Configure CARGO_REGISTRY_TOKEN in Codeberg repo Settings -> Actions -> Secrets.
-      - run: cargo login "$CARGO_REGISTRY_TOKEN"
+      - name: Verify crates.io token is configured
+        run: |
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "CARGO_REGISTRY_TOKEN is not set or is empty." >&2
+            echo "Configure it in Codeberg repo Settings -> Actions -> Secrets, then rerun the tag workflow." >&2
+            exit 1
+          fi
       - run: cargo publish -p detritus-protocol
       - name: Wait for detritus-protocol on the crates.io index
         run: |
