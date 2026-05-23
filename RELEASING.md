@@ -8,7 +8,7 @@ order. Versions are synchronized across all three during v0.x.
 
 - You have a crates.io account with `publish` ownership on all three crates.
   To verify: `cargo owner --list detritus-protocol` (etc.).
-- `CARGO_REGISTRY_TOKEN` is configured as a Codeberg repo secret (one-time
+- `CRATES_IO_API_TOKEN` is configured as a Codeberg repo secret (one-time
   setup; see `.forgejo/workflows/release.yml`).
 - You're on a clean checkout of `trunk` with CI green on the latest commit.
 
@@ -59,7 +59,7 @@ order. Versions are synchronized across all three during v0.x.
 
    The `release.yml` workflow triggers automatically. It runs `cargo publish`
    for each crate in topological order (protocol → server → client) using the
-   `CARGO_REGISTRY_TOKEN` secret.
+   `CRATES_IO_API_TOKEN` secret.
 
 7. **Verify the publish.** After ~5 minutes:
 

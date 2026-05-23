@@ -24,7 +24,7 @@ The v1 receiver exposes two ingestion endpoints:
 
 - [CI status](https://codeberg.org/caniko/rs-detritus/actions/workflows/ci.yml)
 - On every push to `trunk` and every PR, CI runs fmt, clippy, check, test, doc, an MSRV check, `cargo-audit`, `cargo-deny`, and a `cargo publish --dry-run` for `detritus-protocol`.
-- On every tag `vX.Y.Z`, the release workflow runs the real `cargo publish` to crates.io using the `CARGO_REGISTRY_TOKEN` repo secret.
+- On every tag `vX.Y.Z`, the release workflow runs the real `cargo publish` to crates.io using the `CRATES_IO_API_TOKEN` repo secret.
 - Release procedure: [RELEASING.md](RELEASING.md)
 
 ## License
