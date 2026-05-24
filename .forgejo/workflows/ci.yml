@@ -20,10 +20,6 @@ jobs:
     container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
-      - uses: https://github.com/Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ github.workflow }}
-          cache-on-failure: true
       - run: rustup component add rustfmt
       - run: cargo fmt --all --check
 
@@ -32,10 +28,6 @@ jobs:
     container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
-      - uses: https://github.com/Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ github.workflow }}
-          cache-on-failure: true
       - run: rustup component add clippy
       - run: cargo clippy --workspace --all-features --all-targets -- -D warnings
 
@@ -44,10 +36,6 @@ jobs:
     container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
-      - uses: https://github.com/Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ github.workflow }}
-          cache-on-failure: true
       - run: cargo check --workspace --all-features
 
   test:
@@ -55,10 +43,6 @@ jobs:
     container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
-      - uses: https://github.com/Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ github.workflow }}
-          cache-on-failure: true
       - run: cargo test --workspace --all-features
 
   doc:
@@ -68,10 +52,6 @@ jobs:
       RUSTDOCFLAGS: "-D warnings"
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
-      - uses: https://github.com/Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ github.workflow }}
-          cache-on-failure: true
       - run: cargo doc --workspace --no-deps --all-features
 
   msrv:
@@ -79,10 +59,6 @@ jobs:
     container: rust:1.88-bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
-      - uses: https://github.com/Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ github.workflow }}-msrv
-          cache-on-failure: true
       - run: cargo check --workspace --all-features
 
   publish-dry-run:
@@ -90,10 +66,6 @@ jobs:
     container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
-      - uses: https://github.com/Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ github.workflow }}
-          cache-on-failure: true
       # Only detritus-protocol is dry-run-able on PR/push: the dependent
       # crates carry `detritus-protocol = "X.Y.Z"` version constraints,
       # which cargo resolves against the live crates.io index. Until
@@ -109,10 +81,6 @@ jobs:
     container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
-      - uses: https://github.com/Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ github.workflow }}-audit
-          cache-on-failure: true
       - run: cargo install --locked cargo-audit
       - run: cargo audit --deny warnings
 
@@ -121,9 +89,5 @@ jobs:
     container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
-      - uses: https://github.com/Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ github.workflow }}-deny
-          cache-on-failure: true
       - run: cargo install --locked cargo-deny
       - run: cargo deny --all-features check

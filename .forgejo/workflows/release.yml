@@ -20,10 +20,6 @@ jobs:
     container: rust:bookworm
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
-      - uses: https://github.com/Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ github.workflow }}
-          cache-on-failure: true
       - run: rustup component add rustfmt clippy
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-features --all-targets -- -D warnings
@@ -38,10 +34,6 @@ jobs:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_API_TOKEN }}
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v4
-      - uses: https://github.com/Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ github.workflow }}
-          cache-on-failure: true
       - name: Verify crates.io token is configured
         run: |
           if [ -z "${CRATES_IO_API_TOKEN:-}" ]; then
