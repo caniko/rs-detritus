@@ -52,7 +52,7 @@ jobs:
             exit 1
           fi
 
-          version="$(cargo metadata --no-deps --format-version 1 | grep -m1 -o '"version":"[^"]*"' | cut -d '"' -f4)"
+          version="$(cargo metadata --no-deps --format-version 1 | grep -o '"version":"[^"]*"' | head -n1 | cut -d '"' -f4)"
           if [ -z "$version" ]; then
             echo "Could not read package version from cargo metadata" >&2
             exit 1
