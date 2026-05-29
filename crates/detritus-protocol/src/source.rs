@@ -28,3 +28,24 @@ impl SourceId {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canonical_joins_fields_with_slashes() {
+        // The canonical form is a storage-path and rate-limit-key contract, so
+        // pin its exact shape.
+        let source = SourceId {
+            project: "detritus".to_owned(),
+            platform: "linux".to_owned(),
+            version: "1.2.3".to_owned(),
+            install_id: Uuid::nil(),
+        };
+        assert_eq!(
+            source.canonical(),
+            "detritus/linux/1.2.3/00000000-0000-0000-0000-000000000000"
+        );
+    }
+}

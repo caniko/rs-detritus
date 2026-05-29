@@ -123,3 +123,58 @@ pub(crate) fn validate_component(name: &'static str, value: &str) -> Result<(), 
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn source_key_accepts_ordinary_components() {
+        let key = SourceKey::new("detritus".to_owned(), "install-42".to_owned())
+            .expect("ordinary components are valid");
+        assert_eq!(key.canonical(), "detritus/install-42");
+    }
+
+    #[test]
+    fn source_key_rejects_empty_components() {
+        assert!(matches!(
+            SourceKey::new(String::new(), "ok".to_owned()),
+            Err(StorageError::InvalidComponent {
+                name: "project",
+                ..
+            })
+        ));
+        assert!(matches!(
+            SourceKey::new("ok".to_owned(), String::new()),
+            Err(StorageError::InvalidComponent {
+                name: "source_id",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn source_key_rejects_path_traversal_components() {
+        // The component becomes a directory name in blob/log paths, so dot and
+        // separator sequences must never be accepted.
+        for bad in ["..", ".", "../etc", "a/b", "a\\b", "/abs", "p\\..\\q"] {
+            assert!(
+                matches!(
+                    SourceKey::new(bad.to_owned(), "ok".to_owned()),
+                    Err(StorageError::InvalidComponent {
+                        name: "project",
+                        ..
+                    })
+                ),
+                "expected `{bad}` to be rejected as a path component"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_component_accepts_dotted_names_without_separators() {
+        // A leading/embedded dot is fine; only `.`/`..`/separators are rejected.
+        validate_component("project", "my.app").expect("dots inside a name are allowed");
+        validate_component("project", ".hidden").expect("a leading dot is allowed");
+    }
+}
