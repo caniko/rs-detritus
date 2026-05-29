@@ -75,6 +75,7 @@ pub enum PanicHookError {
     Io(#[from] io::Error),
     /// Native minidump handler could not be started.
     #[cfg(all(feature = "minidump", not(target_os = "android")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "minidump")))]
     #[error("failed to start minidump child process: {0}")]
     Minidump(#[from] minidumper_child::Error),
 }

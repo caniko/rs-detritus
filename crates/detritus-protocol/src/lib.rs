@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
 //! Wire protocol types for Detritus telemetry and crash ingestion.
 //!
 //! `detritus-protocol` owns the schema shared by `detritus-client` and
@@ -14,10 +15,19 @@
 //!
 //! assert_eq!(PROTOCOL_VERSION, 1);
 //! ```
+//!
+//! # Features
+//!
+//! - **`multipart`** *(enabled by default)* — RFC 7578 multipart encoding and
+//!   parsing of crash envelopes ([`multipart`]). Building with
+//!   `default-features = false` drops it along with the `bytes`,
+//!   `futures-util`, `multer`, and `tokio` dependencies, leaving the schema
+//!   types for a logs-only consumer.
 
 /// Crash-report schema types and protocol errors.
 pub mod crash;
 #[cfg(feature = "multipart")]
+#[cfg_attr(docsrs, doc(cfg(feature = "multipart")))]
 /// Multipart encoding and parsing helpers for crash envelopes.
 pub mod multipart;
 /// Curated OpenTelemetry Protocol log-service bindings.

@@ -1,4 +1,13 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
 //! Client SDK for Detritus ingestion.
+//!
+//! # Features
+//!
+//! - **`minidump`** *(enabled by default)* — capture native minidumps via
+//!   `minidumper-child` on Linux, Windows, and macOS. With the feature off (or
+//!   on Android) [`install_panic_hook`] falls back to the portable
+//!   [`PanicKind::PanicTarball`] bundle and the `minidumper-child` dependency is
+//!   dropped.
 //!
 //! Public API is limited to [`Layer`], [`LayerBuilder`], [`install_panic_hook`],
 //! [`ship_pending_crashes`], [`ship_pending_crashes_with_config`], [`ShipConfig`],
