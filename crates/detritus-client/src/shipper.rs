@@ -278,6 +278,11 @@ fn cleanup_sent(sent: &Path, retention_days: u64) -> io::Result<()> {
     Ok(())
 }
 
+// Read side of the `sdk-config.json` that `panic_hook` writes into every spool
+// entry. Intended for an out-of-process shipper that recovers the endpoint and
+// `sent_retention_days` from the spool rather than being handed them (note that
+// `cleanup_sent` currently hardcodes the retention). Retained — not dead — until
+// that path is wired; allow(dead_code) documents the temporary lack of a caller.
 #[allow(dead_code)]
 fn read_stored_upload_config(entry: &Path) -> Result<Option<StoredUploadConfig>, ShipError> {
     let path = entry.join("sdk-config.json");

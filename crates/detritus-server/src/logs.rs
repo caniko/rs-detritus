@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::{NaiveDate, Utc};
 use detritus_protocol::{
@@ -425,6 +425,3 @@ fn log_record_json(record: &LogRecord) -> Value {
         "event_name": record.event_name,
     })
 }
-
-#[allow(dead_code)]
-fn _assert_paths_are_send_sync(_: PathBuf) {}
