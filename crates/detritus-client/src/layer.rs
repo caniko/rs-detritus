@@ -337,17 +337,25 @@ async fn export_request(
 ) -> Result<(), tonic::Status> {
     let mut client = LogsServiceClient::connect(endpoint.to_string())
         .await
-        .map_err(|error| tonic::Status::unavailable(error.to_string()))?;
+        .map_err(|error| {
+            tonic::Status::unavailable(format!(
+                "failed to connect to observability endpoint {endpoint}: {error}"
+            ))
+        })?;
     let mut request = tonic::Request::new(request);
     request.metadata_mut().insert(
         GRPC_VERSION_KEY,
-        MetadataValue::try_from(PROTOCOL_VERSION.to_string())
-            .map_err(|error| tonic::Status::internal(error.to_string()))?,
+        MetadataValue::try_from(PROTOCOL_VERSION.to_string()).map_err(|_| {
+            tonic::Status::internal("protocol version is not a valid gRPC metadata value")
+        })?,
     );
     request.metadata_mut().insert(
         "authorization",
-        MetadataValue::try_from(format!("Bearer {}", token.expose_secret()))
-            .map_err(|error| tonic::Status::internal(error.to_string()))?,
+        // Build the header message without echoing the token, so a malformed
+        // bearer value can never leak into a Status string.
+        MetadataValue::try_from(format!("Bearer {}", token.expose_secret())).map_err(|_| {
+            tonic::Status::internal("authorization bearer token is not a valid HTTP header value")
+        })?,
     );
     client.export(request).await?;
     Ok(())
