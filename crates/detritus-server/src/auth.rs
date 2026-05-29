@@ -71,6 +71,13 @@ pub struct TokenStore {
 
 impl TokenStore {
     /// Loads a token store from a TOML token configuration file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AuthConfigError::Io`] if the file cannot be read,
+    /// [`AuthConfigError::Toml`] if it is not valid TOML,
+    /// [`AuthConfigError::InvalidHash`] if a token's Argon2 hash is malformed,
+    /// or [`AuthConfigError::NoTokens`] if the file declares no tokens.
     pub async fn load(path: &Path) -> Result<Self, AuthConfigError> {
         let raw = fs::read_to_string(path).await?;
         let config: TokensConfig = toml::from_str(&raw)?;
@@ -137,6 +144,15 @@ pub struct SecurityConfig {
 /// config file's parent directory, not relative to the current working
 /// directory.  This prevents deployment breakage when `systemd` (or similar)
 /// starts the daemon from `/`.
+///
+/// # Errors
+///
+/// Returns [`AuthConfigError::Io`] if the file cannot be read,
+/// [`AuthConfigError::Toml`] if it is not valid TOML,
+/// [`AuthConfigError::SchemaProjectMismatch`] if a `[[schema]]` entry names a
+/// project with no matching `[[token]]`, [`AuthConfigError::InvalidHash`] or
+/// [`AuthConfigError::NoTokens`] from token loading, or
+/// [`AuthConfigError::Schema`] if a referenced schema file fails to load.
 pub async fn load_security_config(path: &Path) -> Result<SecurityConfig, AuthConfigError> {
     let raw = fs::read_to_string(path).await?;
     let config: TokensConfig = toml::from_str(&raw)?;

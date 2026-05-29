@@ -105,9 +105,12 @@ impl SchemaRegistry {
     /// Validates `payload` against the schema registered for `(project, kind)`.
     ///
     /// Returns `Ok(())` when no schema is registered for the pair
-    /// (accept-by-default — tenants without a schema are not gated). Returns
-    /// [`SchemaError::Validation`] when a registered schema rejects the
-    /// payload, with all collected errors.
+    /// (accept-by-default — tenants without a schema are not gated).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaError::Validation`] when a registered schema rejects the
+    /// payload, carrying all collected validation errors.
     pub fn validate(
         &self,
         project: &str,

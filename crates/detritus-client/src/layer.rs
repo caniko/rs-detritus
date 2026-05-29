@@ -44,6 +44,12 @@ impl Layer {
     }
 
     /// Requests a best-effort flush of queued records.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LayerError::WorkerStopped`] if the background exporter has
+    /// stopped, or [`LayerError::Flush`] if the flush could not complete (for
+    /// example it timed out or the export failed and could not be spooled).
     pub async fn flush(&self) -> Result<(), LayerError> {
         let (sender, receiver) = oneshot::channel();
         self.sender
@@ -140,6 +146,12 @@ impl LayerBuilder {
     }
 
     /// Builds the layer and spawns its background exporter on the current Tokio runtime.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LayerError::MissingEndpoint`], [`LayerError::MissingToken`],
+    /// [`LayerError::MissingSource`], or [`LayerError::MissingQueueDir`] if the
+    /// corresponding builder field was not set.
     pub fn build(self) -> Result<Layer, LayerError> {
         let endpoint = self.endpoint.ok_or(LayerError::MissingEndpoint)?;
         let token = self.token.ok_or(LayerError::MissingToken)?;

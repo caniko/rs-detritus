@@ -89,6 +89,10 @@ pub enum ShipError {
 /// Dump bytes and text-ish attachments are compressed with zstd
 /// (level [`DEFAULT_COMPRESSION_LEVEL`]) **before** the SHA-256 is computed,
 /// so content-addressed dedup is based on the compressed bytes.
+///
+/// # Errors
+///
+/// See [`ship_pending_crashes_with_config`].
 pub async fn ship_pending_crashes(
     spool_dir: impl AsRef<Path>,
     endpoint: Url,
@@ -98,6 +102,13 @@ pub async fn ship_pending_crashes(
 }
 
 /// Like [`ship_pending_crashes`] but with explicit compression settings.
+///
+/// # Errors
+///
+/// Returns [`ShipError::Io`] on spool filesystem errors, [`ShipError::Json`] if
+/// stored metadata cannot be parsed, [`ShipError::Protocol`] if multipart
+/// encoding fails, [`ShipError::Http`] if the upload request fails, or
+/// [`ShipError::Status`] if the server rejects an upload.
 pub async fn ship_pending_crashes_with_config(
     spool_dir: impl AsRef<Path>,
     endpoint: Url,

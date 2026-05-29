@@ -26,6 +26,11 @@ pub struct PartEncoding {
 
 impl CrashEnvelope {
     /// Writes the envelope as an RFC 7578 multipart body with [`DEFAULT_BOUNDARY`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProtocolError::Json`] if the metadata fails to serialize, or
+    /// [`ProtocolError::Io`] if writing to `writer` fails.
     pub async fn write_to<W>(&self, writer: &mut W) -> Result<(), ProtocolError>
     where
         W: AsyncWrite + Unpin,
@@ -34,6 +39,11 @@ impl CrashEnvelope {
     }
 
     /// Writes the envelope as an RFC 7578 multipart body.
+    ///
+    /// # Errors
+    ///
+    /// As [`write_to`](Self::write_to): [`ProtocolError::Json`] on metadata
+    /// serialization failure, [`ProtocolError::Io`] on writer failure.
     pub async fn write_to_with_boundary<W>(
         &self,
         writer: &mut W,
@@ -49,6 +59,11 @@ impl CrashEnvelope {
 
     /// Writes the envelope as an RFC 7578 multipart body, applying per-part
     /// `Content-Encoding` headers as specified by `encodings`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProtocolError::Json`] if the metadata fails to serialize, or
+    /// [`ProtocolError::Io`] if writing to `writer` fails.
     pub async fn write_to_with_boundary_and_encodings<W>(
         &self,
         writer: &mut W,
@@ -101,6 +116,14 @@ impl CrashEnvelope {
     }
 
     /// Parses an envelope from a body using [`DEFAULT_BOUNDARY`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProtocolError::Multipart`] if the body is not valid multipart,
+    /// [`ProtocolError::MissingPart`] if the required `metadata` or `dump` part
+    /// is absent, [`ProtocolError::InvalidPartName`] or
+    /// [`ProtocolError::InvalidMultipart`] for a malformed part name or payload,
+    /// or [`ProtocolError::Json`] if the metadata part is not valid JSON.
     pub async fn read_from<R>(reader: &mut R) -> Result<Self, ProtocolError>
     where
         R: AsyncRead + Unpin,
@@ -109,6 +132,10 @@ impl CrashEnvelope {
     }
 
     /// Parses an envelope from a body with the supplied multipart boundary.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`read_from`](Self::read_from).
     pub async fn read_from_with_boundary<R>(
         reader: &mut R,
         boundary: &str,

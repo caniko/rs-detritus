@@ -83,6 +83,12 @@ pub enum PanicHookError {
 ///
 /// The installed hook performs no network I/O. It writes a pending crash entry
 /// and then chains to the hook that was installed previously.
+///
+/// # Errors
+///
+/// Returns [`PanicHookError::Io`] if the spool directory cannot be prepared.
+/// With the `minidump` feature enabled, also returns the `Minidump` variant if
+/// the native minidump child process fails to start.
 pub fn install_panic_hook(config: PanicHookConfig) -> Result<(), PanicHookError> {
     fs::create_dir_all(config.spool_dir.join("pending"))?;
     fs::create_dir_all(config.spool_dir.join("sent"))?;

@@ -44,6 +44,10 @@ impl StoragePaths {
     }
 
     /// Creates the base storage directory tree.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError::Io`] if creating any storage subdirectory fails.
     pub async fn prepare(&self) -> Result<(), StorageError> {
         fs::create_dir_all(self.data_dir.join("logs")).await?;
         fs::create_dir_all(self.data_dir.join("crashes").join("by-hash")).await?;
