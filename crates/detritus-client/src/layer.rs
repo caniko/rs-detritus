@@ -148,6 +148,12 @@ impl LayerBuilder {
             sample_rate: self.sample_rate,
             receiver,
         };
+        // The exporter is a process-lifetime background task: it is intentionally
+        // detached. The handle is deliberately dropped rather than joined — the
+        // worker only returns once every `Layer` clone is dropped, so awaiting it
+        // here would hang, and `let _ =` on the `JoinHandle` future would trip
+        // `clippy::let_underscore_future`. Graceful shutdown is coordinated over
+        // the channel via `Layer::flush`.
         tokio::spawn(worker.run());
         Ok(Layer { sender })
     }
