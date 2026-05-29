@@ -19,6 +19,9 @@ use crate::{
     spool::SpoolLock,
 };
 
+/// Default number of days to keep successfully sent crash entries.
+pub const DEFAULT_SENT_RETENTION_DAYS: u64 = 90;
+
 /// Configuration knobs for crash-dump upload compression.
 ///
 /// Created with [`ShipConfig::default`] and customised with the builder
@@ -125,23 +128,80 @@ pub async fn ship_pending_crashes_with_config(
     let sent = spool_dir.join("sent");
     fs::create_dir_all(&pending)?;
     fs::create_dir_all(&sent)?;
-    cleanup_sent(&sent, 90)?;
+    cleanup_sent(&sent, DEFAULT_SENT_RETENTION_DAYS)?;
 
     let mut shipped = 0;
     for entry in pending_entries(&pending)? {
-        let envelope = read_envelope(&entry)?;
-        post_envelope(&endpoint, &token, &envelope, &config).await?;
-        let destination = sent.join(
-            entry
-                .file_name()
-                .ok_or_else(|| io::Error::other("pending entry has no file name"))?,
-        );
-        if destination.exists() {
-            fs::remove_dir_all(&destination)?;
-        }
-        fs::rename(&entry, destination)?;
+        ship_one(&entry, &sent, &endpoint, &token, &config).await?;
         shipped += 1;
     }
+    Ok(shipped)
+}
+
+/// Ships pending crash artifacts using each entry's stored endpoint.
+///
+/// The caller supplies the bearer token. The token is never read from the spool;
+/// each pending entry only contributes its stored endpoint and sent-entry
+/// retention from `sdk-config.json`.
+///
+/// A filesystem lock on `spool_dir/.lock` prevents two processes from scanning
+/// the same pending directory concurrently. The lock is held for the whole
+/// scan-and-ship run.
+///
+/// # Errors
+///
+/// Returns [`ShipError::Io`] on spool filesystem errors, [`ShipError::Json`] if
+/// stored metadata or stored upload config cannot be parsed,
+/// [`ShipError::MissingStoredConfig`] if a pending entry lacks a usable
+/// `sdk-config.json`, [`ShipError::Protocol`] if multipart encoding fails,
+/// [`ShipError::Http`] if an upload request fails, or [`ShipError::Status`] if
+/// the server rejects an upload. The first error aborts the run.
+pub async fn ship_pending_crashes_using_stored_config(
+    spool_dir: impl AsRef<Path>,
+    token: SecretString,
+) -> Result<usize, ShipError> {
+    ship_pending_crashes_using_stored_config_with_config(spool_dir, token, ShipConfig::default())
+        .await
+}
+
+/// Like [`ship_pending_crashes_using_stored_config`] but with explicit
+/// compression settings.
+///
+/// Each pending entry is posted to the endpoint recovered from that entry's
+/// `sdk-config.json`. Successfully shipped entries are moved to `sent/`, then
+/// `sent/` is cleaned using the maximum stored retention across the entries
+/// shipped by this run. If no entry was shipped, cleanup uses
+/// [`DEFAULT_SENT_RETENTION_DAYS`].
+///
+/// # Errors
+///
+/// Returns [`ShipError::Io`] on spool filesystem errors, [`ShipError::Json`] if
+/// stored metadata or stored upload config cannot be parsed,
+/// [`ShipError::MissingStoredConfig`] if a pending entry lacks a usable
+/// `sdk-config.json`, [`ShipError::Protocol`] if multipart encoding fails,
+/// [`ShipError::Http`] if an upload request fails, or [`ShipError::Status`] if
+/// the server rejects an upload. The first error aborts the run.
+pub async fn ship_pending_crashes_using_stored_config_with_config(
+    spool_dir: impl AsRef<Path>,
+    token: SecretString,
+    config: ShipConfig,
+) -> Result<usize, ShipError> {
+    let spool_dir = spool_dir.as_ref();
+    let _lock = SpoolLock::acquire(spool_dir)?;
+    let pending = spool_dir.join("pending");
+    let sent = spool_dir.join("sent");
+    fs::create_dir_all(&pending)?;
+    fs::create_dir_all(&sent)?;
+
+    let mut shipped = 0;
+    let mut max_retention_days = None;
+    for entry in pending_entries(&pending)? {
+        let (endpoint, retention_days) = resolve_stored_endpoint(&entry)?;
+        ship_one(&entry, &sent, &endpoint, &token, &config).await?;
+        record_retention(&mut max_retention_days, retention_days);
+        shipped += 1;
+    }
+    cleanup_sent(&sent, retention_or_default(max_retention_days))?;
     Ok(shipped)
 }
 
@@ -157,6 +217,27 @@ fn pending_entries(pending: &Path) -> io::Result<Vec<PathBuf>> {
     };
     entries.sort();
     Ok(entries)
+}
+
+async fn ship_one(
+    entry: &Path,
+    sent: &Path,
+    endpoint: &Url,
+    token: &SecretString,
+    config: &ShipConfig,
+) -> Result<(), ShipError> {
+    let envelope = read_envelope(entry)?;
+    post_envelope(endpoint, token, &envelope, config).await?;
+    let destination = sent.join(
+        entry
+            .file_name()
+            .ok_or_else(|| io::Error::other("pending entry has no file name"))?,
+    );
+    if destination.exists() {
+        fs::remove_dir_all(&destination)?;
+    }
+    fs::rename(entry, destination)?;
+    Ok(())
 }
 
 fn read_envelope(entry: &Path) -> Result<CrashEnvelope, ShipError> {
@@ -294,6 +375,18 @@ fn cleanup_sent(sent: &Path, retention_days: u64) -> io::Result<()> {
     Ok(())
 }
 
+fn record_retention(max_retention_days: &mut Option<u64>, retention_days: u64) {
+    *max_retention_days = Some(
+        max_retention_days
+            .map(|current| current.max(retention_days))
+            .unwrap_or(retention_days),
+    );
+}
+
+fn retention_or_default(max_retention_days: Option<u64>) -> u64 {
+    max_retention_days.unwrap_or(DEFAULT_SENT_RETENTION_DAYS)
+}
+
 fn read_stored_upload_config(entry: &Path) -> Result<Option<StoredUploadConfig>, ShipError> {
     let path = entry.join("sdk-config.json");
     if path.exists() {
@@ -314,8 +407,6 @@ fn resolve_stored_endpoint(entry: &Path) -> Result<(Url, u64), ShipError> {
         .map_err(|_| ShipError::MissingStoredConfig(entry.to_path_buf()))?;
     Ok((endpoint, config.sent_retention_days))
 }
-
-const _: fn(&Path) -> Result<(Url, u64), ShipError> = resolve_stored_endpoint;
 
 #[cfg(test)]
 mod tests {
@@ -404,5 +495,21 @@ mod tests {
             resolve_stored_endpoint(temp.path()),
             Err(ShipError::MissingStoredConfig(path)) if path == temp.path()
         ));
+    }
+
+    #[test]
+    fn record_retention_keeps_maximum_value() {
+        let mut retention = None;
+
+        record_retention(&mut retention, 7);
+        record_retention(&mut retention, 30);
+        record_retention(&mut retention, 0);
+
+        assert_eq!(retention_or_default(retention), 30);
+    }
+
+    #[test]
+    fn retention_or_default_falls_back_when_no_entry_was_shipped() {
+        assert_eq!(retention_or_default(None), DEFAULT_SENT_RETENTION_DAYS);
     }
 }
