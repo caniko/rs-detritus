@@ -97,7 +97,16 @@ impl LogsHandler {
                         .join(", ");
                     let message = format!("log attribute validation failed: {joined}");
                     let truncated = if message.len() > 1024 {
-                        format!("{}…", &message[..1021])
+                        // Truncate at a UTF-8 char boundary at or below byte 1021.
+                        // Validation messages embed attribute content, which can
+                        // contain multi-byte characters; slicing mid-character
+                        // would panic. The loop terminates because byte 0 is always
+                        // a boundary, and `end <= 1021 < message.len()` here.
+                        let mut end = 1021;
+                        while !message.is_char_boundary(end) {
+                            end -= 1;
+                        }
+                        format!("{}…", &message[..end])
                     } else {
                         message
                     };

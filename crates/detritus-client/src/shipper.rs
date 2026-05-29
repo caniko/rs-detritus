@@ -261,8 +261,13 @@ fn crash_url(endpoint: &Url) -> Url {
 }
 
 fn cleanup_sent(sent: &Path, retention_days: u64) -> io::Result<()> {
+    // saturating_mul avoids an overflow panic if retention_days is misconfigured
+    // to an absurd value; the checked_sub below then saturates the cutoff to
+    // UNIX_EPOCH, i.e. "keep everything", which is the intended extreme behavior.
     let cutoff = SystemTime::now()
-        .checked_sub(Duration::from_secs(retention_days * 24 * 60 * 60))
+        .checked_sub(Duration::from_secs(
+            retention_days.saturating_mul(24 * 60 * 60),
+        ))
         .unwrap_or(SystemTime::UNIX_EPOCH);
     for entry in pending_entries(sent)? {
         let modified = entry.metadata()?.modified().unwrap_or(SystemTime::now());

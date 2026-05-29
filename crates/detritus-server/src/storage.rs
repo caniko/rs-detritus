@@ -65,6 +65,10 @@ impl StoragePaths {
     }
 
     pub(crate) fn blob_path(&self, sha256: &str) -> PathBuf {
+        // Invariant: `sha256` is a 64-char lowercase hex digest produced by
+        // `hex::encode(Sha256::finalize(..))` at the single call site, so the
+        // two-char shard prefix is always in range and on a char boundary. A
+        // future caller passing an untrusted/short hash must validate it first.
         let prefix = &sha256[..2];
         self.data_dir
             .join("crashes")
