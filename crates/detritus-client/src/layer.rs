@@ -362,22 +362,24 @@ fn event_to_log_record(event: &Event<'_>) -> LogRecord {
     let mut visitor = EventVisitor::default();
     event.record(&mut visitor);
     let severity_text = metadata.level().to_string();
-    let body = visitor
-        .message
-        .clone()
+    let EventVisitor { message, fields } = visitor;
+    let body = message
         .or_else(|| {
-            visitor
-                .fields
+            fields
                 .iter()
                 .find(|(key, _)| key == "message")
                 .map(|(_, value)| value.clone())
         })
         .unwrap_or_else(|| metadata.name().to_owned());
-    let mut attributes = visitor
-        .fields
-        .into_iter()
-        .map(|(key, value)| string_attr(&key, &value))
-        .collect::<Vec<_>>();
+    // Move the visited (key, value) strings straight into attributes rather than
+    // re-allocating both through string_attr's to_owned, and pre-size for the two
+    // trailing target/name attributes appended below.
+    let mut attributes = Vec::with_capacity(fields.len() + 2);
+    attributes.extend(
+        fields
+            .into_iter()
+            .map(|(key, value)| owned_string_attr(key, value)),
+    );
     attributes.push(string_attr("target", metadata.target()));
     attributes.push(string_attr("name", metadata.name()));
 
@@ -416,10 +418,14 @@ fn severity_number(level: &Level) -> SeverityNumber {
 }
 
 fn string_attr(key: &str, value: &str) -> KeyValue {
+    owned_string_attr(key.to_owned(), value.to_owned())
+}
+
+fn owned_string_attr(key: String, value: String) -> KeyValue {
     KeyValue {
-        key: key.to_owned(),
+        key,
         value: Some(AnyValue {
-            value: Some(any_value::Value::StringValue(value.to_owned())),
+            value: Some(any_value::Value::StringValue(value)),
         }),
     }
 }
