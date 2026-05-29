@@ -97,6 +97,9 @@ pub fn install_panic_hook(config: PanicHookConfig) -> Result<(), PanicHookError>
     let previous = Arc::new(previous);
     std::panic::set_hook(Box::new(move |info| {
         if let Err(error) = write_pending_crash(&config, info) {
+            // Panic-time: report on stderr, never via tracing. The hook runs while
+            // the process is unwinding and the user's subscriber may be the
+            // detritus Layer, so the async/tracing stack must not be entered here.
             eprintln!("[observability] failed to write panic artifact: {error}");
         }
         previous(info);
@@ -114,6 +117,7 @@ fn install_minidumper_if_requested(config: &PanicHookConfig) -> Result<(), Panic
         .with_crashes_dir(config.spool_dir.join("minidumper"))
         .on_minidump(move |buffer, _path| {
             if let Err(error) = write_pending_minidump(&config, &buffer) {
+                // Crash-callback context: stderr only, never tracing (as in set_hook).
                 eprintln!("[observability] failed to write minidump artifact: {error}");
             }
         })

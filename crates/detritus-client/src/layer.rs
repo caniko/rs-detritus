@@ -307,6 +307,9 @@ impl Worker {
 
     async fn export_or_spool(&self, records: Vec<LogRecord>) {
         if let Err(error) = self.export_records(records).await {
+            // stderr, not tracing: this runs inside the exporter worker, and the
+            // detritus Layer may be installed in the subscriber — reporting export
+            // failures via tracing would feed them straight back into this worker.
             eprintln!("[observability] failed to export logs: {error}");
         }
     }
