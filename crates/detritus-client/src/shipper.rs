@@ -78,6 +78,10 @@ pub enum ShipError {
     /// Multipart encoding failed.
     #[error("crash multipart encoding failed: {0}")]
     Protocol(#[from] detritus_protocol::ProtocolError),
+    /// A spool entry has no usable stored upload config: `sdk-config.json` is
+    /// absent when required or its stored endpoint is not a valid URL.
+    #[error("entry {} has no usable stored upload config", .0.display())]
+    MissingStoredConfig(PathBuf),
 }
 
 /// Ships pending crash artifacts and moves successful entries to `sent/`.
@@ -290,17 +294,115 @@ fn cleanup_sent(sent: &Path, retention_days: u64) -> io::Result<()> {
     Ok(())
 }
 
-// Read side of the `sdk-config.json` that `panic_hook` writes into every spool
-// entry. Intended for an out-of-process shipper that recovers the endpoint and
-// `sent_retention_days` from the spool rather than being handed them (note that
-// `cleanup_sent` currently hardcodes the retention). Retained — not dead — until
-// that path is wired; allow(dead_code) documents the temporary lack of a caller.
-#[allow(dead_code)]
 fn read_stored_upload_config(entry: &Path) -> Result<Option<StoredUploadConfig>, ShipError> {
     let path = entry.join("sdk-config.json");
     if path.exists() {
         Ok(Some(serde_json::from_slice(&fs::read(path)?)?))
     } else {
         Ok(None)
+    }
+}
+
+/// Resolve a spool entry's stored upload endpoint and retention.
+///
+/// Returns the parsed endpoint URL and retention, or an error if the entry lacks
+/// a usable `sdk-config.json`.
+fn resolve_stored_endpoint(entry: &Path) -> Result<(Url, u64), ShipError> {
+    let config = read_stored_upload_config(entry)?
+        .ok_or_else(|| ShipError::MissingStoredConfig(entry.to_path_buf()))?;
+    let endpoint = Url::parse(&config.endpoint)
+        .map_err(|_| ShipError::MissingStoredConfig(entry.to_path_buf()))?;
+    Ok((endpoint, config.sent_retention_days))
+}
+
+const _: fn(&Path) -> Result<(Url, u64), ShipError> = resolve_stored_endpoint;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_stored_config(
+        entry: &Path,
+        endpoint: &str,
+        sent_retention_days: u64,
+    ) -> Result<(), ShipError> {
+        fs::write(
+            entry.join("sdk-config.json"),
+            serde_json::to_vec_pretty(&StoredUploadConfig {
+                endpoint: endpoint.to_owned(),
+                sent_retention_days,
+            })?,
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn read_stored_upload_config_round_trips_producer_format() {
+        let temp = tempfile::tempdir().expect("temp dir is created");
+        write_stored_config(temp.path(), "https://crashes.example.test/upload", 14)
+            .expect("stored config is written");
+
+        let config = read_stored_upload_config(temp.path())
+            .expect("stored config is readable")
+            .expect("stored config is present");
+
+        assert_eq!(config.endpoint, "https://crashes.example.test/upload");
+        assert_eq!(config.sent_retention_days, 14);
+    }
+
+    #[test]
+    fn read_stored_upload_config_returns_none_when_missing() {
+        let temp = tempfile::tempdir().expect("temp dir is created");
+
+        let config =
+            read_stored_upload_config(temp.path()).expect("missing config is not an error");
+
+        assert!(config.is_none());
+    }
+
+    #[test]
+    fn read_stored_upload_config_reports_malformed_json() {
+        let temp = tempfile::tempdir().expect("temp dir is created");
+        fs::write(temp.path().join("sdk-config.json"), b"{not-json")
+            .expect("malformed config is written");
+
+        assert!(matches!(
+            read_stored_upload_config(temp.path()),
+            Err(ShipError::Json(_))
+        ));
+    }
+
+    #[test]
+    fn resolve_stored_endpoint_reports_missing_config() {
+        let temp = tempfile::tempdir().expect("temp dir is created");
+
+        assert!(matches!(
+            resolve_stored_endpoint(temp.path()),
+            Err(ShipError::MissingStoredConfig(path)) if path == temp.path()
+        ));
+    }
+
+    #[test]
+    fn resolve_stored_endpoint_returns_url_and_retention() {
+        let temp = tempfile::tempdir().expect("temp dir is created");
+        write_stored_config(temp.path(), "https://crashes.example.test/base", 30)
+            .expect("stored config is written");
+
+        let (endpoint, retention_days) =
+            resolve_stored_endpoint(temp.path()).expect("stored endpoint is usable");
+
+        assert_eq!(endpoint.as_str(), "https://crashes.example.test/base");
+        assert_eq!(retention_days, 30);
+    }
+
+    #[test]
+    fn resolve_stored_endpoint_reports_invalid_url() {
+        let temp = tempfile::tempdir().expect("temp dir is created");
+        write_stored_config(temp.path(), "not a url", 30).expect("stored config is written");
+
+        assert!(matches!(
+            resolve_stored_endpoint(temp.path()),
+            Err(ShipError::MissingStoredConfig(path)) if path == temp.path()
+        ));
     }
 }
