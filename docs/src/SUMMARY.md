@@ -23,4 +23,5 @@
 
 # Guides
 
+- [Offline Shipping](./guides/offline-shipping.md)
 - [Releasing](./guides/releasing.md)
