@@ -232,6 +232,7 @@ struct CrashDumpRef {
 #[doc(hidden)]
 /// Hidden error type returned by the retention test hook.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum JanitorError {
     /// Filesystem operation failed during retention cleanup.
     #[error("janitor I/O error: {0}")]

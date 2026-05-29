@@ -61,6 +61,7 @@ impl ShipConfig {
 
 /// Errors returned while shipping pending crash reports.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ShipError {
     /// Filesystem operation failed.
     #[error("crash spool I/O error: {0}")]

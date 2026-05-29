@@ -161,6 +161,7 @@ impl LayerBuilder {
 
 /// Errors returned while building or flushing a [`Layer`].
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum LayerError {
     /// Builder is missing an endpoint.
     #[error("observability layer endpoint is required")]

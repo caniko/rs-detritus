@@ -209,6 +209,7 @@ struct SchemaEntry {
 
 /// Errors returned while loading security configuration.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum AuthConfigError {
     /// Token configuration file could not be read.
     #[error("token config I/O error: {0}")]

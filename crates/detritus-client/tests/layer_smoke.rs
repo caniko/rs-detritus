@@ -68,7 +68,7 @@ async fn spawn_server(
 ) -> (
     SocketAddr,
     oneshot::Sender<()>,
-    tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync>>>,
+    tokio::task::JoinHandle<Result<(), detritus_server::ServerError>>,
 ) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("local addr");

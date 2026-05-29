@@ -68,6 +68,7 @@ impl PanicKind {
 
 /// Errors returned while installing or running the panic hook setup.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum PanicHookError {
     /// Hook spool directory could not be created.
     #[error("failed to prepare panic spool directory: {0}")]

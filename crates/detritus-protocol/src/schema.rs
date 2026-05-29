@@ -43,6 +43,7 @@ pub struct SchemaSpec {
 
 /// Errors produced during schema loading or validation.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum SchemaError {
     /// A schema file could not be read from disk.
     #[error("schema I/O error reading `{path}`: {source}")]

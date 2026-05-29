@@ -26,8 +26,8 @@ pub use janitor::RetentionConfig;
 pub use rate_limit::RateLimitConfig;
 /// JSON Schema registry for per-tenant payload validation.
 pub use schemas::{ProjectSchemaEntry, SchemaKind, SchemaRegistry};
-/// Server configuration and serving entry points.
-pub use server::{ServerConfig, serve, serve_with_shutdown};
+/// Server configuration, error type, and serving entry points.
+pub use server::{ServerConfig, ServerError, serve, serve_with_shutdown};
 
 #[doc(hidden)]
 /// Hidden test hook for exercising retention without exposing janitor internals.

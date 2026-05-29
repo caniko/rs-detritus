@@ -24,8 +24,23 @@ use crate::{
     metrics::Metrics,
     rate_limit::{RateLimitConfig, RateLimiter},
     schemas::SchemaRegistry,
-    storage::StoragePaths,
+    storage::{StorageError, StoragePaths},
 };
+
+/// Errors returned while starting or running a Detritus server.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ServerError {
+    /// Binding the listener, inspecting its address, or the running server failed.
+    #[error("server I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    /// Preparing the on-disk storage layout failed.
+    #[error(transparent)]
+    Storage(#[from] StorageError),
+    /// Registering the Prometheus metrics collectors failed.
+    #[error("metrics initialization failed: {0}")]
+    Metrics(#[from] prometheus::Error),
+}
 
 /// Runtime configuration for an embedded Detritus server.
 #[derive(Clone)]
@@ -62,7 +77,7 @@ pub(crate) struct AppState {
 ///
 /// Returns an error if binding the listener, preparing storage, initializing
 /// metrics, or serving requests fails.
-pub async fn serve(config: ServerConfig) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn serve(config: ServerConfig) -> Result<(), ServerError> {
     let listener = TcpListener::bind(config.bind).await?;
     serve_with_shutdown(listener, config, shutdown_signal()).await
 }
@@ -104,7 +119,7 @@ pub async fn serve_with_shutdown(
     listener: TcpListener,
     config: ServerConfig,
     shutdown: impl Future<Output = ()> + Send + 'static,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(), ServerError> {
     let storage = StoragePaths::new(config.data_dir);
     storage.prepare().await?;
     let metrics = Metrics::new()?;

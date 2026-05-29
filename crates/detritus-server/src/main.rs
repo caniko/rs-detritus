@@ -71,7 +71,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         },
     };
 
-    serve(config).await
+    serve(config).await?;
+    Ok(())
 }
 
 fn init_tracing(log_format: LogFormat) {

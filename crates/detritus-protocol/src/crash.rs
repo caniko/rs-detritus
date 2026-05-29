@@ -113,6 +113,7 @@ pub struct CrashAttachment {
 
 /// Protocol serialization and parsing errors.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ProtocolError {
     /// JSON metadata failed to encode or decode.
     #[error("crash metadata JSON error: {0}")]

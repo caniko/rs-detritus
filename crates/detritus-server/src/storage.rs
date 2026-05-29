@@ -94,6 +94,7 @@ impl StoragePaths {
 #[doc(hidden)]
 /// Hidden storage error type used by storage-layout test hooks.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum StorageError {
     /// Storage path component was empty or contained path separators.
     #[error("invalid storage path component `{name}`: `{value}`")]
