@@ -22,12 +22,25 @@ use crate::{
     storage::SourceKey,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct TokenContext {
     pub(crate) id: String,
     pub(crate) project: String,
     pub(crate) source_prefix: String,
     secret_hash: String,
+}
+
+// Manual Debug so the Argon2 secret hash never reaches logs or panic output
+// (the store is reachable via TokenStore/ServerConfig Debug). C-DEBUG.
+impl std::fmt::Debug for TokenContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenContext")
+            .field("id", &self.id)
+            .field("project", &self.project)
+            .field("source_prefix", &self.source_prefix)
+            .field("secret_hash", &"<redacted>")
+            .finish()
+    }
 }
 
 impl TokenContext {
@@ -164,7 +177,7 @@ pub async fn load_security_config(path: &Path) -> Result<SecurityConfig, AuthCon
 }
 
 /// Pre-hashed token entry used by embedded tests and local harnesses.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TestToken {
     /// Token identifier used in logs and rate-limit keys.
     pub id: String,
@@ -174,6 +187,18 @@ pub struct TestToken {
     pub project: String,
     /// Canonical source prefix this token may write.
     pub source_prefix: String,
+}
+
+// Manual Debug so the Argon2 secret hash is not printed. C-DEBUG.
+impl std::fmt::Debug for TestToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TestToken")
+            .field("id", &self.id)
+            .field("project", &self.project)
+            .field("source_prefix", &self.source_prefix)
+            .field("secret_hash", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Debug, Deserialize)]

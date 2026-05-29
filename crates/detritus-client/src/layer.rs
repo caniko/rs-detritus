@@ -31,13 +31,14 @@ const DEFAULT_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 const DEFAULT_CHANNEL_CAPACITY: usize = 4096;
 
 /// A tracing subscriber layer that exports events to the observability server.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Layer {
     sender: mpsc::Sender<WorkerMessage>,
 }
 
 impl Layer {
     /// Starts a builder for an observability tracing layer.
+    #[must_use]
     pub fn builder() -> LayerBuilder {
         LayerBuilder::default()
     }
@@ -83,48 +84,56 @@ impl Default for LayerBuilder {
 
 impl LayerBuilder {
     /// Sets the OTLP/gRPC endpoint, for example `http://127.0.0.1:4317`.
+    #[must_use]
     pub fn endpoint(mut self, endpoint: Url) -> Self {
         self.endpoint = Some(endpoint);
         self
     }
 
     /// Sets the bearer token sent to the observability server.
+    #[must_use]
     pub fn token(mut self, token: SecretString) -> Self {
         self.token = Some(token);
         self
     }
 
     /// Sets the source identity attached to every exported batch.
+    #[must_use]
     pub fn source(mut self, source: SourceId) -> Self {
         self.source = Some(source);
         self
     }
 
     /// Sets the maximum records per export request.
+    #[must_use]
     pub fn batch_size(mut self, batch_size: usize) -> Self {
         self.batch_size = batch_size.max(1);
         self
     }
 
     /// Sets the periodic flush interval.
+    #[must_use]
     pub fn flush_interval(mut self, flush_interval: Duration) -> Self {
         self.flush_interval = flush_interval;
         self
     }
 
     /// Sets the maximum time a requested flush waits for network export.
+    #[must_use]
     pub fn flush_timeout(mut self, flush_timeout: Duration) -> Self {
         self.flush_timeout = flush_timeout;
         self
     }
 
     /// Sets the directory used for offline protobuf log batches.
+    #[must_use]
     pub fn queue_dir(mut self, queue_dir: PathBuf) -> Self {
         self.queue_dir = Some(queue_dir);
         self
     }
 
     /// Sets a deterministic sample rate in the inclusive range `0.0..=1.0`.
+    #[must_use]
     pub fn sample_rate(mut self, sample_rate: f64) -> Self {
         self.sample_rate = sample_rate.clamp(0.0, 1.0);
         self

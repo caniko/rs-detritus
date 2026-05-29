@@ -43,7 +43,7 @@ pub enum ServerError {
 }
 
 /// Runtime configuration for an embedded Detritus server.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ServerConfig {
     /// Socket address to bind when using [`serve`].
     pub bind: SocketAddr,
