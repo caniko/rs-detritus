@@ -8,6 +8,10 @@
     crane.url = "github:ipetkov/crane";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     git-hooks.url = "github:cachix/git-hooks.nix";
+    plinth = {
+      url = "git+https://codeberg.org/caniko/plinth.git?ref=refs/heads/trunk";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -18,6 +22,7 @@
     crane,
     treefmt-nix,
     git-hooks,
+    plinth,
     ...
   }:
     flake-utils.lib.eachDefaultSystem (system: let
@@ -94,11 +99,21 @@
           cp -r docs/book "$out"
         '';
       };
+      website = plinth.lib.${system}.mkProjectSite {
+        pname = "detritus-website";
+        domain = "detritus.tartanoglu.com";
+        configPath = ./website/plinth-project.toml;
+        docsPackage = docs;
+      };
     in {
       packages = {
         default = detritus;
-        inherit detritus docs;
-        site = docs;
+        inherit detritus docs website;
+        site = website;
+      };
+
+      apps.deploy-pages = plinth.lib.${system}.mkDeployPagesApp {
+        domain = "detritus.tartanoglu.com";
       };
 
       checks = {
