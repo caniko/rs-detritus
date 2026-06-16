@@ -1,0 +1,3 @@
+[ci]
+runner = "atlas"
+packages = ["detritus-client", "detritus-protocol", "detritus-server"]

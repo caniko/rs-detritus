@@ -4,6 +4,7 @@ name: CI
 on:
   push:
     branches: ["**"]
+    tags-ignore: ["**"]
   pull_request:
 
 concurrency:
@@ -25,7 +26,7 @@ jobs:
         uses: https://code.forgejo.org/actions/cache@v4
         with:
           path: ~/.cargo/bin
-          key: cargo-bin-${{ runner.os }}-${{ hashFiles('.forgejo/workflows/ci.yaml', '.github/workflows/ci.yaml') }}
+          key: cargo-bin-${{ runner.os }}-${{ hashFiles('.forgejo/workflows/*.yaml') }}
 
       - name: Test all features
         run: cargo test -p detritus-server --all-features
@@ -34,4 +35,4 @@ jobs:
         run: cargo clippy -p detritus-server --all-targets --all-features -- --deny warnings
 
       - name: Package crate
-        run: cargo package -p detritus-server --allow-dirty
+        run: cargo package -p detritus-server --allow-dirty --list
