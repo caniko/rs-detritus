@@ -13,6 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and sent-entry retention recovered per entry while keeping the bearer token
   caller-supplied and off disk.
 
+### Changed
+
+- CI workflows migrated from container-based Rust runners to Nix-based runners
+  with per-step runner tier split (format on `codeberg-tiny`, test on
+  `codeberg-medium`, clippy on `codeberg-small`, flake check on
+  `atlas-nix-trusted`). Badge updated from `CI-drift` to `CI-managed`.
+- Nix flake inputs `rust-overlay`, `treefmt-nix`, and `git-hooks` now follow
+  the workspace `nixpkgs` input for consistency.
+
+### Removed
+
+- Removed `foldhash 0.1.5`, `hashbrown 0.15.5`, `id-arena`, `leb128fmt`,
+  `unicode-xid`, `wasm-encoder`, `wasm-metadata`, `wasmparser`,
+  `wasip3`, `wit-bindgen 0.46.0`, `wit-bindgen-core`, `wit-bindgen-rust`,
+  `wit-bindgen-rust-macro`, `wit-component`, `wit-parser` transient
+  dependency trees.
+
 ## [0.1.0] - 2026-05-22
 
 ### Added
