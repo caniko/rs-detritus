@@ -21,6 +21,7 @@
       url = "git+https://codeberg.org/caniko/plinth.git?ref=refs/heads/trunk";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    rs-harbor.url = "git+https://codeberg.org/caniko/rs-harbor.git?ref=trunk";
   };
 
   outputs = {
@@ -32,6 +33,7 @@
     treefmt-nix,
     git-hooks,
     plinth,
+    rs-harbor,
     ...
   }:
     flake-utils.lib.eachDefaultSystem (system: let
@@ -44,6 +46,10 @@
         extensions = ["rustfmt" "clippy"];
       };
       craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
+      cross = rs-harbor.lib.mkCross {
+        inherit pkgs system;
+        enableOsxcross = false;
+      };
       src = pkgs.lib.fileset.toSource {
         root = ./.;
         fileset = pkgs.lib.fileset.unions [
@@ -90,6 +96,17 @@
           };
         });
 
+      crossPackageSet = rs-harbor.lib.mkCrossPackages ({
+        inherit pkgs craneLib cross commonArgs;
+        pname = "detritus";
+        targets = ["native" "aarch64-linux"];
+      } // lib.optionalAttrs (builtins.hasAttr "toolchainArgs" (builtins.functionArgs rs-harbor.lib.mkCrossPackages)) {
+        toolchainArgs = {
+          channel = "stable";
+          extensions = ["rust-src" "rustfmt" "clippy"];
+        };
+      });
+
       docs = pkgs.stdenv.mkDerivation {
         pname = "detritus-docs";
         version = "0.1.0";
@@ -118,6 +135,7 @@
       packages = {
         default = detritus;
         inherit detritus docs website;
+        "detritus-aarch64-linux" = crossPackageSet."detritus-aarch64-linux";
         site = website;
       };
 
@@ -161,6 +179,7 @@
       };
     })
     // {
+      crossPackages."x86_64-linux"."aarch64-linux".detritus = self.packages."x86_64-linux"."detritus-aarch64-linux";
       overlays.default = final: _prev: {
         detritus = self.packages.${final.stdenv.hostPlatform.system}.detritus;
       };
