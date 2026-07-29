@@ -97,15 +97,16 @@
         });
 
       crossPackageSet = rs-harbor.lib.mkCrossPackages ({
-        inherit pkgs craneLib cross commonArgs;
-        pname = "detritus";
-        targets = ["native" "aarch64-linux"];
-      } // lib.optionalAttrs (builtins.hasAttr "toolchainArgs" (builtins.functionArgs rs-harbor.lib.mkCrossPackages)) {
-        toolchainArgs = {
-          channel = "stable";
-          extensions = ["rust-src" "rustfmt" "clippy"];
-        };
-      });
+          inherit pkgs craneLib cross commonArgs;
+          pname = "detritus";
+          targets = ["native" "aarch64-linux"];
+        }
+        // lib.optionalAttrs (builtins.hasAttr "toolchainArgs" (builtins.functionArgs rs-harbor.lib.mkCrossPackages)) {
+          toolchainArgs = {
+            channel = "stable";
+            extensions = ["rust-src" "rustfmt" "clippy"];
+          };
+        });
 
       docs = pkgs.stdenv.mkDerivation {
         pname = "detritus-docs";
