@@ -3,11 +3,11 @@ name: publish-crate
 labels:
   platform: linux/amd64
 when:
-- event: manual
-- event: tag
+  - event: manual
+  - event: tag
 steps:
-- name: publish
-  image: ghcr.io/cachix/devenv:latest
-  commands:
-  - nix develop -c cargo publish --dry-run -p detritus-server
-  - nix develop -c cargo publish -p detritus-server
+  - name: publish
+    image: ghcr.io/cachix/devenv:latest
+    commands:
+      - nix develop -c cargo publish --dry-run -p detritus-server
+      - nix develop -c cargo publish -p detritus-server
