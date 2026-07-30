@@ -42,8 +42,8 @@
         overlays = [(import rust-overlay)];
       };
       lib = pkgs.lib;
-      rustToolchain = rs-harbor.lib.mkToolchain { toolchainProfile = "nightly"; };
-      craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
+      rustToolchain = rs-harbor.lib.mkToolchain { inherit pkgs; toolchainProfile = "nightly"; };
+      craneLib = rustToolchain.craneLib;
       cross = rs-harbor.lib.mkCross {
         inherit pkgs system;
         enableOsxcross = false;
