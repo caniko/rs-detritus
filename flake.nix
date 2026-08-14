@@ -21,7 +21,7 @@
       url = "git+https://codeberg.org/caniko/plinth.git?ref=refs/heads/trunk";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    rs-harbor.url = "git+https://codeberg.org/caniko/rs-harbor.git?ref=trunk&rev=c26b735eede8078f795651c4a9cbf0be8733b221";
+    rs-harbor.url = "git+ssh://git@codeberg.org/caniko/rs-harbor.git?ref=trunk&rev=f209ddbca3fdbb0dc31fa3886ccc2ff7369c18ac";
   };
 
   outputs = {
@@ -42,8 +42,9 @@
         overlays = [(import rust-overlay)];
       };
       lib = pkgs.lib;
-      rustToolchain = rs-harbor.lib.mkToolchain { inherit pkgs; toolchainProfile = "nightly"; };
-      craneLib = rustToolchain.craneLib;
+      toolchain = rs-harbor.lib.mkToolchain { inherit pkgs; toolchainProfile = "nightly"; };
+      rustToolchain = toolchain.rustToolchain;
+      craneLib = toolchain.craneLib;
       cross = rs-harbor.lib.mkCross {
         inherit pkgs system;
         enableOsxcross = false;
