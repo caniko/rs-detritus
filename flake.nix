@@ -21,7 +21,8 @@
       url = "git+https://codeberg.org/caniko/plinth.git?ref=refs/heads/trunk";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    rs-harbor.url = "git+ssh://git@github.com/caniko/rs-harbor.git?ref=trunk&rev=05cc4f162b55fa904b687db1821e2463fa813e50";
+    harbor-rs.url = "git+ssh://git@github.com/caniko/harbor-rs.git?ref=trunk&rev=05cc4f162b55fa904b687db1821e2463fa813e50";
+    rs-harbor.follows = "harbor-rs";
   };
 
   outputs = {
@@ -33,7 +34,7 @@
     treefmt-nix,
     git-hooks,
     plinth,
-    rs-harbor,
+    harbor-rs,
     ...
   }:
     flake-utils.lib.eachDefaultSystem (system: let
@@ -42,10 +43,10 @@
         overlays = [(import rust-overlay)];
       };
       lib = pkgs.lib;
-      toolchain = rs-harbor.lib.mkToolchain { inherit pkgs; toolchainProfile = "nightly"; };
+      toolchain = harbor-rs.lib.mkToolchain { inherit pkgs; toolchainProfile = "nightly"; };
       rustToolchain = toolchain.rustToolchain;
       craneLib = toolchain.craneLib;
-      cross = rs-harbor.lib.mkCross {
+      cross = harbor-rs.lib.mkCross {
         inherit pkgs system;
         enableOsxcross = false;
       };
@@ -95,11 +96,11 @@
           };
         });
 
-      crossPackageSet = rs-harbor.lib.mkCrossPackages ({
+      crossPackageSet = harbor-rs.lib.mkCrossPackages ({
         inherit pkgs craneLib cross commonArgs;
         pname = "detritus";
         targets = ["native" "aarch64-linux"];
-      } // lib.optionalAttrs (builtins.hasAttr "toolchainArgs" (builtins.functionArgs rs-harbor.lib.mkCrossPackages)) {
+      } // lib.optionalAttrs (builtins.hasAttr "toolchainArgs" (builtins.functionArgs harbor-rs.lib.mkCrossPackages)) {
         toolchainArgs = {
           channel = "stable";
           extensions = ["rust-src" "rustfmt" "clippy"];
