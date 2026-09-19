@@ -89,7 +89,7 @@
           inherit cargoArtifacts;
           meta = {
             description = "Lightweight crash and log receiver";
-            homepage = "https://codeberg.org/caniko/rs-detritus";
+            homepage = "https://github.com/caniko/rs-detritus";
             license = pkgs.lib.licenses.asl20;
             mainProgram = "detritusd";
           };
@@ -156,6 +156,24 @@
             inherit cargoArtifacts;
             cargoClippyExtraArgs = "--all-targets -- --deny warnings";
           });
+        # Fail if flake inputs ever point at the retired Codeberg/Codefloe
+        # mirrors again (fleet migrated to github.com/caniko/*).
+        # sourceUrl package metadata is excluded: informational only, not fetched.
+        host-pinning =
+          let
+            # Split across literals so this file never matches its own pattern.
+            staleHosts = "cod" + "eberg|cod" + "efloe";
+          in
+          pkgs.runCommand "rs-detritus-host-pinning" {} ''
+            if ${pkgs.lib.getExe pkgs.ripgrep} -v "sourceUrl" ${./flake.nix} ${./flake.lock} \
+              | ${pkgs.lib.getExe pkgs.ripgrep} -q "${staleHosts}"; then
+              echo "ERROR: retired forge host in flake inputs:" >&2
+              ${pkgs.lib.getExe pkgs.ripgrep} -v "sourceUrl" ${./flake.nix} ${./flake.lock} \
+                | ${pkgs.lib.getExe pkgs.ripgrep} -n "${staleHosts}" >&2 || true
+              exit 1
+            fi
+            touch $out
+          '';
       };
 
       formatter = treefmtEval.config.build.wrapper;
