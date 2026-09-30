@@ -131,6 +131,7 @@ async fn prune_indexes_and_collect_references(
         let bytes = fs::read(&file).await?;
         if let Ok(index) = serde_json::from_slice::<CrashIndexRef>(&bytes) {
             referenced.insert(index.dump.sha256);
+            referenced.extend(index.attachments.into_iter().map(|blob| blob.sha256));
         }
     }
     Ok(referenced)
@@ -222,6 +223,8 @@ impl JanitorStats {
 #[derive(Debug, Deserialize)]
 struct CrashIndexRef {
     dump: CrashDumpRef,
+    #[serde(default)]
+    attachments: Vec<CrashDumpRef>,
 }
 
 #[derive(Debug, Deserialize)]
