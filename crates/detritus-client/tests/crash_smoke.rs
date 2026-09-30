@@ -26,6 +26,23 @@ const INSTALL_ID: &str = "11111111-1111-1111-1111-111111111111";
 
 #[tokio::test(flavor = "multi_thread")]
 async fn panic_hook_spools_chains_and_ships_next_launch() {
+    if std::env::var_os("DETRITUS_PANIC_CHILD").is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "panic_hook_spools_chains_and_ships_next_launch",
+                "--nocapture",
+            ])
+            .env("DETRITUS_PANIC_CHILD", "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
     let server_data = TempDir::new().expect("server data");
     let spool = TempDir::new().expect("spool dir");
     let context_file = spool.path().join("context.json");
@@ -53,7 +70,51 @@ async fn panic_hook_spools_chains_and_ships_next_launch() {
     assert!(pending[0].join("dump.bin").exists());
     assert!(pending[0].join("context.json").exists());
 
+    let result = std::thread::spawn(|| std::panic::panic_any(String::from("owned panic"))).join();
+    assert!(result.is_err());
+    let result = std::thread::spawn(|| std::panic::panic_any(42_i32)).join();
+    assert!(result.is_err());
+    let pending = entries(spool.path().join("pending"));
+    assert_eq!(pending.len(), 3);
+    let texts = pending
+        .iter()
+        .map(|entry| {
+            let metadata: detritus_protocol::CrashMetadata =
+                serde_json::from_slice(&std::fs::read(entry.join("metadata.json")).unwrap())
+                    .unwrap();
+            assert_eq!(metadata.kind, detritus_protocol::CrashKind::PanicTarball);
+            assert!(
+                !std::fs::read_to_string(entry.join("sdk-config.json"))
+                    .unwrap()
+                    .contains("secret-token")
+            );
+            metadata.panic_text.unwrap()
+        })
+        .collect::<Vec<_>>();
+    for text in [
+        "panic hook smoke",
+        "owned panic",
+        "<non-string panic payload>",
+    ] {
+        assert!(texts.iter().any(|value| value.contains(text)));
+    }
+
+    assert!(matches!(
+        ship_pending_crashes(
+            spool.path(),
+            "http://127.0.0.1:1".parse().unwrap(),
+            SecretString::from("secret-token")
+        )
+        .await,
+        Err(detritus::ShipError::Http(_))
+    ));
+    assert_eq!(entries(spool.path().join("pending")).len(), 3);
+
     let (addr, shutdown, handle) = spawn_server(server_data.path()).await;
+    assert!(
+        matches!(ship_pending_crashes(spool.path(), format!("http://{addr}").parse().unwrap(), SecretString::from("wrong-token")).await, Err(detritus::ShipError::Status(status)) if status == reqwest::StatusCode::UNAUTHORIZED)
+    );
+    assert_eq!(entries(spool.path().join("pending")).len(), 3);
     let shipped = ship_pending_crashes(
         spool.path(),
         format!("http://{addr}").parse().expect("server endpoint"),
@@ -61,9 +122,9 @@ async fn panic_hook_spools_chains_and_ships_next_launch() {
     )
     .await
     .expect("ship pending");
-    assert_eq!(shipped, 1);
-    assert!(entries(spool.path().join("pending")).is_empty());
-    assert_eq!(entries(spool.path().join("sent")).len(), 1);
+    assert_eq!(shipped, 3);
+    assert_eq!(entries(spool.path().join("pending")), Vec::<PathBuf>::new());
+    assert_eq!(entries(spool.path().join("sent")).len(), 3);
 
     shutdown.send(()).expect("send shutdown");
     handle
@@ -77,7 +138,7 @@ async fn panic_hook_spools_chains_and_ships_next_launch() {
         .join("by-source")
         .join("detritus")
         .join(INSTALL_ID);
-    assert_eq!(entries(index_dir).len(), 1);
+    assert_eq!(entries(index_dir).len(), 3);
 }
 
 async fn spawn_server(

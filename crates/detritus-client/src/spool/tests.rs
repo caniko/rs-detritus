@@ -5,7 +5,7 @@ use detritus_protocol::otlp::logs::{LogRecord, ResourceLogs, ScopeLogs};
 fn persisted_batches_roundtrip_and_ignore_unrelated_files() {
     let root = tempfile::tempdir().unwrap();
     let dir = root.path().join("queue");
-    assert!(pending_log_batches(&dir).unwrap().is_empty());
+    assert_eq!(pending_log_batches(&dir).unwrap(), Vec::<PathBuf>::new());
     let request = ExportLogsServiceRequest {
         resource_logs: vec![ResourceLogs {
             scope_logs: vec![ScopeLogs {

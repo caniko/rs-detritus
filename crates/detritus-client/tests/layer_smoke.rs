@@ -62,6 +62,85 @@ async fn layer_smoke_exports_tracing_events_to_server() {
     );
 }
 
+#[tokio::test]
+async fn offline_batches_replay_once_and_invalid_tokens_remain_spooled() {
+    let data = TempDir::new().unwrap();
+    let queue = TempDir::new().unwrap();
+    let offline = Layer::builder()
+        .endpoint("http://127.0.0.1:1".parse().unwrap())
+        .token(SecretString::from("secret-token"))
+        .source(source())
+        .queue_dir(queue.path().to_owned())
+        .flush_interval(Duration::from_secs(60))
+        .build()
+        .unwrap();
+    offline.flush().await.unwrap();
+    tracing::subscriber::with_default(Registry::default().with(offline.clone()), || {
+        tracing::info!("replay me exactly once");
+    });
+    assert!(offline.flush().await.is_err());
+    drop(offline);
+    let corrupt = queue.path().join("corrupt.protobuf");
+    std::fs::write(&corrupt, [255]).unwrap();
+    let (addr, shutdown, handle) = spawn_server(data.path()).await;
+    let online = Layer::builder()
+        .endpoint(format!("http://{addr}").parse().unwrap())
+        .token(SecretString::from("secret-token"))
+        .source(source())
+        .queue_dir(queue.path().to_owned())
+        .sample_rate(0.0)
+        .flush_interval(Duration::from_secs(60))
+        .build()
+        .unwrap();
+    online.flush().await.unwrap();
+    tracing::subscriber::with_default(Registry::default().with(online.clone()), || {
+        tracing::info!("sampled out");
+    });
+    online.flush().await.unwrap();
+    drop(online);
+    let pending = std::fs::read_dir(queue.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "protobuf"))
+        .collect::<Vec<_>>();
+    assert_eq!(pending, vec![corrupt]);
+    let bad_queue = TempDir::new().unwrap();
+    let bad = Layer::builder()
+        .endpoint(format!("http://{addr}").parse().unwrap())
+        .token(SecretString::from("sensitive\ninvalid"))
+        .source(source())
+        .queue_dir(bad_queue.path().to_owned())
+        .flush_interval(Duration::from_secs(60))
+        .build()
+        .unwrap();
+    bad.flush().await.unwrap();
+    tracing::subscriber::with_default(Registry::default().with(bad.clone()), || {
+        tracing::info!("invalid header");
+    });
+    let error = bad.flush().await.unwrap_err();
+    assert!(!error.to_string().contains("sensitive"));
+    assert!(std::fs::read_dir(bad_queue.path()).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .path()
+            .extension()
+            .is_some_and(|ext| ext == "protobuf")
+    }));
+    drop(bad);
+    shutdown.send(()).unwrap();
+    handle.await.unwrap().unwrap();
+    let text = tokio::fs::read_to_string(
+        data.path()
+            .join("logs/detritus")
+            .join(INSTALL_ID)
+            .join(format!("{}.ndjson", Utc::now().date_naive())),
+    )
+    .await
+    .unwrap();
+    assert_eq!(text.lines().count(), 1);
+    assert!(text.contains("replay me exactly once"));
+}
+
 async fn spawn_server(
     data_dir: &Path,
 ) -> (

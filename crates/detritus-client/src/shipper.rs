@@ -19,6 +19,10 @@ use crate::{
     spool::SpoolLock,
 };
 
+#[cfg(test)]
+#[path = "shipper/tests.rs"]
+mod regression_tests;
+
 /// Default number of days to keep successfully sent crash entries.
 pub const DEFAULT_SENT_RETENTION_DAYS: u64 = 90;
 
@@ -412,6 +416,7 @@ fn resolve_stored_endpoint(entry: &Path) -> Result<(Url, u64), ShipError> {
 mod tests {
     use super::*;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn write_stored_config(
         entry: &Path,
         endpoint: &str,
@@ -428,6 +433,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn read_stored_upload_config_round_trips_producer_format() {
         let temp = tempfile::tempdir().expect("temp dir is created");
         write_stored_config(temp.path(), "https://crashes.example.test/upload", 14)
@@ -442,6 +448,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn read_stored_upload_config_returns_none_when_missing() {
         let temp = tempfile::tempdir().expect("temp dir is created");
 
@@ -452,6 +459,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn read_stored_upload_config_reports_malformed_json() {
         let temp = tempfile::tempdir().expect("temp dir is created");
         fs::write(temp.path().join("sdk-config.json"), b"{not-json")
@@ -464,6 +472,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_stored_endpoint_reports_missing_config() {
         let temp = tempfile::tempdir().expect("temp dir is created");
 
@@ -474,6 +483,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_stored_endpoint_returns_url_and_retention() {
         let temp = tempfile::tempdir().expect("temp dir is created");
         write_stored_config(temp.path(), "https://crashes.example.test/base", 30)
@@ -487,6 +497,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_stored_endpoint_reports_invalid_url() {
         let temp = tempfile::tempdir().expect("temp dir is created");
         write_stored_config(temp.path(), "not a url", 30).expect("stored config is written");
@@ -498,6 +509,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn record_retention_keeps_maximum_value() {
         let mut retention = None;
 
@@ -509,6 +521,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn retention_or_default_falls_back_when_no_entry_was_shipped() {
         assert_eq!(retention_or_default(None), DEFAULT_SENT_RETENTION_DAYS);
     }

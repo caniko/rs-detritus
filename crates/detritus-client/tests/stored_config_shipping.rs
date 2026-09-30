@@ -23,6 +23,23 @@ const INSTALL_ID: &str = "22222222-2222-2222-2222-222222222222";
 
 #[tokio::test(flavor = "multi_thread")]
 async fn stored_config_shipper_recovers_endpoint_and_posts_to_server() {
+    if std::env::var_os("DETRITUS_STORED_CONFIG_CHILD").is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "stored_config_shipper_recovers_endpoint_and_posts_to_server",
+                "--nocapture",
+            ])
+            .env("DETRITUS_STORED_CONFIG_CHILD", "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
     let server_data = TempDir::new().expect("server data");
     let spool = TempDir::new().expect("spool dir");
     let context_file = spool.path().join("context.json");
@@ -48,7 +65,7 @@ async fn stored_config_shipper_recovers_endpoint_and_posts_to_server() {
             .await
             .expect("ship using stored config");
     assert_eq!(shipped, 1);
-    assert!(entries(spool.path().join("pending")).is_empty());
+    assert_eq!(entries(spool.path().join("pending")), Vec::<PathBuf>::new());
     assert_eq!(entries(spool.path().join("sent")).len(), 1);
 
     shutdown.send(()).expect("send shutdown");
@@ -81,7 +98,7 @@ async fn stored_config_shipper_errors_when_config_is_missing() {
 
     assert!(matches!(error, ShipError::MissingStoredConfig(path) if path == entry));
     assert!(entry.exists());
-    assert!(entries(sent).is_empty());
+    assert_eq!(entries(sent), Vec::<PathBuf>::new());
 }
 
 async fn spawn_server(

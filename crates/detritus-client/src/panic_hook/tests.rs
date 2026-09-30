@@ -37,7 +37,7 @@ fn tarball_contains_readable_panic_backtrace_and_environment() {
     }
     assert_eq!(entries.len(), 3);
     assert_eq!(entries[Path::new("panic.txt")], "panic ☃".as_bytes());
-    assert!(!entries[Path::new("backtrace.txt")].is_empty());
+    assert_ne!(entries[Path::new("backtrace.txt")].as_slice(), b"");
     let env: serde_json::Value = serde_json::from_slice(&entries[Path::new("env.json")]).unwrap();
     assert_eq!(env["os"], std::env::consts::OS);
     assert_eq!(env["arch"], std::env::consts::ARCH);

@@ -83,6 +83,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn compressible_types() {
         assert!(should_compress_content_type("text/plain"));
         assert!(should_compress_content_type("text/plain; charset=utf-8"));
@@ -93,6 +94,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn skip_compressed_types() {
         assert!(!should_compress_content_type("application/zstd"));
         assert!(!should_compress_content_type("application/gzip"));

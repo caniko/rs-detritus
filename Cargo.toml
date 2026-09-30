@@ -10,11 +10,11 @@ resolver = "3"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://codeberg.org/caniko/rs-detritus"
-homepage = "https://codeberg.org/caniko/rs-detritus"
 rust-version = "1.88"
 authors = ["Can H. Tartanoglu <gpg@rotas.mozmail.com>"]
 
 [workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
 missing_docs = "warn"
 unsafe_code = "forbid"
 rust_2018_idioms = { level = "warn", priority = -1 }

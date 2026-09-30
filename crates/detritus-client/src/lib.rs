@@ -1,4 +1,5 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(all(test, coverage_nightly), feature(coverage_attribute))]
 //! Client SDK for Detritus ingestion.
 //!
 //! # Features
@@ -81,6 +82,7 @@ mod tests {
     use super::install_default_crypto_provider;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn install_default_crypto_provider_is_idempotent() {
         install_default_crypto_provider();
         install_default_crypto_provider();
