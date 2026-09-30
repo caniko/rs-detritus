@@ -34,6 +34,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn canonical_joins_fields_with_slashes() {
         // The canonical form is a storage-path and rate-limit-key contract, so
         // pin its exact shape.

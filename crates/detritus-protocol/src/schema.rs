@@ -8,7 +8,7 @@
 //!
 //! # Error taxonomy
 //!
-//! [`SchemaError`](crate::schema::SchemaError) is the unified error type for
+//! [`SchemaError`] is the unified error type for
 //! all schema operations: file I/O, JSON parsing, validation failures, and
 //! look-ups for projects that were never registered.
 

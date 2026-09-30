@@ -1,4 +1,5 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(all(test, coverage_nightly), feature(coverage_attribute))]
 //! Wire protocol types for Detritus telemetry and crash ingestion.
 //!
 //! `detritus-protocol` owns the schema shared by `detritus-client` and

@@ -16,6 +16,19 @@ use uuid::Uuid;
 use detritus_protocol::{AttachmentManifest, CrashAttachment, CrashEnvelope};
 
 #[test]
+fn fixed_otlp_wire_record_survives_prost_upgrade() {
+    // field 1: fixed64 timestamp 42; field 5: AnyValue string "hi".
+    let wire = [9, 42, 0, 0, 0, 0, 0, 0, 0, 42, 4, 10, 2, b'h', b'i'];
+    let record = LogRecord::decode(wire.as_slice()).unwrap();
+    assert_eq!(record.time_unix_nano, 42);
+    assert_eq!(
+        record.body.as_ref().unwrap().value,
+        Some(any_value::Value::StringValue("hi".into()))
+    );
+    assert_eq!(record.encode_to_vec(), wire);
+}
+
+#[test]
 fn roundtrip_log_record() {
     let record = LogRecord {
         time_unix_nano: 42,
