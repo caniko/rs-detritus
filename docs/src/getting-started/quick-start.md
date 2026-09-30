@@ -57,7 +57,12 @@ On success the server responds with `201 Created` and a JSON body containing the
 
 ## 5. Point a Rust application at the receiver
 
-The client SDK installs as a tracing layer plus an optional panic hook. See the crate examples for runnable code:
+The client SDK installs as a tracing layer plus an optional panic hook.
+
+The `install_layer` example enables zstd-compressed OTLP log exports to the local
+Detritus 0.2 receiver with `.compression(detritus::CompressionEncoding::Zstd)`.
+
+See the crate examples for runnable code:
 
 - `cargo run --example install_layer -p detritus-client`
 - `cargo run --example crash_envelope -p detritus-protocol`

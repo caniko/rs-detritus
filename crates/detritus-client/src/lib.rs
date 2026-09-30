@@ -18,9 +18,11 @@
 //! [`SourceId`], and the compression and TLS configuration re-exports.
 //! Everything else is an implementation detail and may change between releases.
 //!
+//! This setup enables zstd-compressed log exports to a Detritus 0.2 receiver.
+//!
 //! ```no_run
 //! use std::{path::PathBuf, time::Duration};
-//! use detritus::{Layer, SourceId};
+//! use detritus::{CompressionEncoding, Layer, SourceId};
 //! use secrecy::SecretString;
 //! use url::Url;
 //! use uuid::Uuid;
@@ -33,6 +35,7 @@
 //! };
 //! let layer = Layer::builder()
 //!     .endpoint(Url::parse("http://127.0.0.1:4317").unwrap())
+//!     .compression(CompressionEncoding::Zstd)
 //!     .token(SecretString::from("secret-token"))
 //!     .source(source)
 //!     .queue_dir(PathBuf::from("observability-spool/logs"))

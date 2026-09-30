@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Enable zstd-compressed OTLP log exports in the tracing-layer example and SDK
+  quick-start snippets.
 - Upgrade Cargo dependencies to current releases, including Tonic/Prost,
   Argon2, jsonschema, Reqwest, TOML, SHA-2, tower-http, and zstd, while retaining
   the Rust 1.88 MSRV and existing wire/spool formats.

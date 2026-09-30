@@ -6,7 +6,7 @@
 
 use std::{path::PathBuf, time::Duration};
 
-use detritus::{Layer, SourceId};
+use detritus::{CompressionEncoding, Layer, SourceId};
 use secrecy::SecretString;
 use tracing_subscriber::{Registry, layer::SubscriberExt};
 use url::Url;
@@ -24,6 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let queue_dir = std::env::temp_dir().join("detritus-example-spool");
     let layer = Layer::builder()
         .endpoint(Url::parse("http://127.0.0.1:4317")?)
+        .compression(CompressionEncoding::Zstd)
         .token(SecretString::from("dev-token"))
         .source(source)
         .queue_dir(PathBuf::from(&queue_dir))

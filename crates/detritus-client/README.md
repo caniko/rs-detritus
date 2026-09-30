@@ -14,11 +14,11 @@ on receiver internals.
 
 ## Quick start
 
-Install the tracing layer on a Tokio runtime:
+Install a zstd-compressed tracing layer on a Tokio runtime, using a Detritus 0.2 receiver:
 
 ```rust,no_run
 use std::{path::PathBuf, time::Duration};
-use detritus::{Layer, SourceId};
+use detritus::{CompressionEncoding, Layer, SourceId};
 use secrecy::SecretString;
 use tracing_subscriber::{Registry, layer::SubscriberExt};
 use url::Url;
@@ -33,6 +33,7 @@ let source = SourceId {
 
 let layer = Layer::builder()
     .endpoint(Url::parse("http://127.0.0.1:4317").unwrap())
+    .compression(CompressionEncoding::Zstd)
     .token(SecretString::from("secret-token"))
     .source(source)
     .queue_dir(PathBuf::from("observability-spool/logs"))
