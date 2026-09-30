@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Move the Plinth flake input to GitHub and refresh locked dependencies.
 - CI workflows migrated from container-based Rust runners to Nix-based runners
   with per-step runner tier split (format on `codeberg-tiny`, test on
   `codeberg-medium`, clippy on `codeberg-small`, flake check on
