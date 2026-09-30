@@ -44,40 +44,39 @@ detritus-protocol = { path = "../detritus-protocol", version = "0.1.0", features
 ] }
 
 chrono = { workspace = true, features = ["serde"] }
-flate2 = "1"
-fs2 = "0.4"
-parking_lot = "0.12"
-prost = "0.13"
+flate2 = "1.1.10"
+fs2 = "0.4.3"
+parking_lot = "0.12.5"
+prost = { workspace = true }
 reqwest = { workspace = true, features = ["multipart", "stream", "gzip"] }
 rustls = { workspace = true }
-secrecy = "0.10"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tar = "0.4"
+secrecy = "0.10.3"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tar = "0.4.46"
 thiserror = { workspace = true }
 zstd = { workspace = true }
-tokio = { version = "1", features = [
+tokio = { workspace = true, features = [
   "rt-multi-thread",
   "macros",
   "fs",
   "sync",
   "time",
 ] }
-tonic = "0.13"
-tracing = "0.1"
-tracing-core = "0.1"
+tonic = { workspace = true }
+tracing = { workspace = true }
+tracing-core = "0.1.36"
 tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"] }
-url = "2"
+url = "2.5.8"
 uuid = { workspace = true, features = ["serde"] }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
-minidumper-child = { version = "0.3", optional = true }
+minidumper-child = { version = "0.5.0", optional = true }
 
 [dev-dependencies]
-argon2 = "0.5"
 detritus-server = { path = "../detritus-server", version = "0.1.0" }
-tempfile = "3"
-tokio-rustls = { version = "0.26", default-features = false, features = [
+tempfile = "3.27.0"
+tokio-rustls = { version = "0.26.6", default-features = false, features = [
   "aws_lc_rs",
 ] }
 

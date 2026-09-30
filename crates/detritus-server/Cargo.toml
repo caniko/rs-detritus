@@ -37,24 +37,24 @@ detritus-protocol = { path = "../detritus-protocol", version = "0.1.0", features
   "multipart",
 ] }
 
-axum = { version = "0.8", features = ["multipart", "http2"] }
-argon2 = "0.5"
-bytes = "1"
+axum = { version = "0.8.9", features = ["multipart", "http2"] }
+argon2 = { workspace = true }
+bytes = "1.12.1"
 chrono = { workspace = true, features = ["serde"] }
 clap = { workspace = true }
-futures-util = "0.3"
-hex = "0.4"
-jsonschema = { version = "0.46", default-features = false }
-http-body-util = "0.1"
-multer = "3"
-prometheus = "0.14"
+futures-util = "0.3.34"
+hex = "0.4.3"
+jsonschema = { version = "0.58.3", default-features = false }
+http-body-util = "0.1.5"
+multer = "3.1.0"
+prometheus = "0.14.0"
 rustls = { workspace = true }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-sha2 = "0.10"
-subtle = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = "0.11.0"
+subtle = "2.6.1"
 thiserror = { workspace = true }
-tokio = { version = "1", features = [
+tokio = { workspace = true, features = [
   "rt-multi-thread",
   "macros",
   "fs",
@@ -64,9 +64,9 @@ tokio = { version = "1", features = [
   "net",
   "time",
 ] }
-tonic = "0.13"
-tower = "0.5"
-tower-http = { version = "0.6", features = [
+tonic = { workspace = true }
+tower = "0.5.3"
+tower-http = { version = "0.7.1", features = [
   "compression-gzip",
   "decompression-gzip",
   "trace",
@@ -78,13 +78,13 @@ tracing-subscriber = { workspace = true, features = [
   "fmt",
   "json",
 ] }
-toml = "0.9"
+toml = "1.1.6"
 uuid = { workspace = true }
 
 [dev-dependencies]
-filetime = "0.2"
+filetime = "0.2.29"
 reqwest = { workspace = true, features = ["json", "multipart"] }
-tempfile = "3"
+tempfile = "3.27.0"
 zstd = { workspace = true }
 
 [package.metadata.docs.rs]

@@ -31,24 +31,29 @@ multipart = ["dep:bytes", "dep:futures-util", "dep:multer", "dep:tokio"]
 workspace = true
 
 [dependencies]
-bytes = { version = "1", optional = true }
+bytes = { version = "1.12.1", optional = true }
 chrono = { workspace = true, features = ["serde"] }
-futures-util = { version = "0.3", optional = true }
-multer = { version = "3", optional = true }
-prost = "0.13"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+futures-util = { version = "0.3.34", optional = true }
+multer = { version = "3.1.0", optional = true }
+prost = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["io-util"], optional = true }
-tonic = "0.13"
+tonic = { workspace = true }
+tonic-prost = "0.14.6"
 uuid = { workspace = true, features = ["serde"] }
 
 [build-dependencies]
-protoc-bin-vendored = "3"
-tonic-build = "0.13"
+protoc-bin-vendored = "3.2.0"
+tonic-prost-build = "0.14.6"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
+
+[[example]]
+name = "crash_envelope"
+required-features = ["multipart"]
 
 [package.metadata.docs.rs]
 all-features = true

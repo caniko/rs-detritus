@@ -2,8 +2,7 @@
 
 use chrono::Utc;
 use detritus_protocol::{
-    AttachmentManifest, BuildInfo, CrashAttachment, CrashEnvelope, CrashKind, CrashMetadata,
-    PROTOCOL_VERSION, SourceId,
+    BuildInfo, CrashKind, CrashMetadata, PROTOCOL_VERSION, SourceId,
     otlp::{
         common::{AnyValue, KeyValue, any_value},
         logs::LogRecord,
@@ -12,6 +11,9 @@ use detritus_protocol::{
 use prost::Message;
 use serde_json::json;
 use uuid::Uuid;
+
+#[cfg(feature = "multipart")]
+use detritus_protocol::{AttachmentManifest, CrashAttachment, CrashEnvelope};
 
 #[test]
 fn roundtrip_log_record() {
@@ -60,6 +62,7 @@ fn roundtrip_crash_metadata_json() {
     }
 }
 
+#[cfg(feature = "multipart")]
 #[tokio::test]
 async fn roundtrip_multipart() {
     let mut metadata = crash_metadata(CrashKind::Minidump);

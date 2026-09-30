@@ -2,7 +2,6 @@
 
 use std::{net::SocketAddr, path::Path};
 
-use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use detritus_protocol::{
     GRPC_VERSION_KEY, PROTOCOL_VERSION,
     otlp::{
@@ -148,13 +147,7 @@ fn string_attr(key: &str, value: &str) -> KeyValue {
 fn test_token_store() -> TokenStore {
     TokenStore::for_tests(vec![TestToken {
         id: "detritus-test".to_owned(),
-        secret_hash: Argon2::default()
-            .hash_password(
-                b"secret-token",
-                &SaltString::from_b64("c29tZXNhbHQ").expect("salt"),
-            )
-            .expect("hash token")
-            .to_string(),
+        secret_hash: include_str!("fixtures/legacy-token.phc").trim().to_owned(),
         project: "detritus".to_owned(),
         source_prefix: "detritus/".to_owned(),
     }])

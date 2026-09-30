@@ -1,6 +1,9 @@
 use std::{path::Path, sync::Arc};
 
-use argon2::{Argon2, PasswordHash, PasswordVerifier};
+use argon2::{
+    Argon2,
+    password_hash::{PasswordVerifier, phc::PasswordHash},
+};
 use axum::{
     Json,
     body::Body,

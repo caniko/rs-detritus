@@ -2,7 +2,6 @@
 
 use std::{net::SocketAddr, path::Path, time::Duration};
 
-use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use chrono::Utc;
 use detritus::{Layer, SourceId};
 use detritus_server::{
@@ -107,11 +106,5 @@ fn test_token_store() -> TokenStore {
 }
 
 fn test_hash() -> String {
-    Argon2::default()
-        .hash_password(
-            b"secret-token",
-            &SaltString::from_b64("c29tZXNhbHQ").expect("salt"),
-        )
-        .expect("hash token")
-        .to_string()
+    include_str!("fixtures/legacy-token.phc").trim().to_owned()
 }
