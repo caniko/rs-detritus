@@ -21,7 +21,12 @@
       url = "git+https://github.com/caniko/plinth.git?ref=refs/heads/trunk";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    harbor-rs.url = "git+https://github.com/caniko/harbor-rs.git?ref=trunk&rev=fac8049316846e0ef1c1e6acd92aed7a337b333a";
+    harbor-rs = {
+      url = "git+https://github.com/caniko/harbor-rs.git?ref=trunk&rev=c4ffa5d9b9232eae1f6693dfbcbcdd2548f31592";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.rust-overlay.follows = "rust-overlay";
+      inputs.crane.follows = "crane";
+    };
   };
 
   outputs = {
@@ -36,13 +41,20 @@
     harbor-rs,
     ...
   }:
-    flake-utils.lib.eachDefaultSystem (system: let
+  # Nixpkgs 26.11 retired x86_64-darwin; retain its supported native systems.
+    flake-utils.lib.eachSystem ["x86_64-linux" "aarch64-linux" "aarch64-darwin"] (system: let
       pkgs = import nixpkgs {
         inherit system;
         overlays = [(import rust-overlay)];
       };
       lib = pkgs.lib;
-      toolchain = harbor-rs.lib.mkToolchain { inherit pkgs; toolchainProfile = "nightly"; };
+      toolchain = harbor-rs.lib.mkToolchain {
+        inherit pkgs;
+        channel = "nightly";
+        date = "latest";
+        extensions = ["rust-src" "rustfmt" "clippy" "llvm-tools-preview"];
+        crossTargets = ["x86_64-unknown-linux-gnu" "aarch64-unknown-linux-gnu"];
+      };
       rustToolchain = toolchain.rustToolchain;
       craneLib = toolchain.craneLib;
       cross = harbor-rs.lib.mkCross {
@@ -96,15 +108,16 @@
         });
 
       crossPackageSet = harbor-rs.lib.mkCrossPackages ({
-        inherit pkgs craneLib cross commonArgs;
-        pname = "detritus";
-        targets = ["native" "aarch64-linux"];
-      } // lib.optionalAttrs (builtins.hasAttr "toolchainArgs" (builtins.functionArgs harbor-rs.lib.mkCrossPackages)) {
-        toolchainArgs = {
-          channel = "stable";
-          extensions = ["rust-src" "rustfmt" "clippy"];
-        };
-      });
+          inherit pkgs craneLib cross commonArgs;
+          pname = "detritus";
+          targets = ["native" "aarch64-linux"];
+        }
+        // lib.optionalAttrs (builtins.hasAttr "toolchainArgs" (builtins.functionArgs harbor-rs.lib.mkCrossPackages)) {
+          toolchainArgs = {
+            channel = "stable";
+            extensions = ["rust-src" "rustfmt" "clippy"];
+          };
+        });
 
       docs = pkgs.stdenv.mkDerivation {
         pname = "detritus-docs";
@@ -131,12 +144,15 @@
         docsPackage = docs;
       };
     in {
-      packages = {
-        default = detritus;
-        inherit detritus docs website;
-        "detritus-aarch64-linux" = crossPackageSet."detritus-aarch64-linux";
-        site = website;
-      };
+      packages =
+        {
+          default = detritus;
+          inherit detritus docs website;
+          site = website;
+        }
+        // lib.optionalAttrs (system == "x86_64-linux") {
+          "detritus-aarch64-linux" = crossPackageSet."detritus-aarch64-linux";
+        };
 
       apps.deploy-pages = plinth.lib.${system}.mkDeployPagesApp {
         domain = "detritus.tartanoglu.com";
@@ -159,11 +175,10 @@
         # Fail if flake inputs ever point at the retired Codeberg/Codefloe
         # mirrors again (fleet migrated to github.com/caniko/*).
         # sourceUrl package metadata is excluded: informational only, not fetched.
-        host-pinning =
-          let
-            # Split across literals so this file never matches its own pattern.
-            staleHosts = "cod" + "eberg|cod" + "efloe";
-          in
+        host-pinning = let
+          # Split across literals so this file never matches its own pattern.
+          staleHosts = "cod" + "eberg|cod" + "efloe";
+        in
           pkgs.runCommand "rs-detritus-host-pinning" {} ''
             if ${pkgs.lib.getExe pkgs.ripgrep} -v "sourceUrl" ${./flake.nix} ${./flake.lock} \
               | ${pkgs.lib.getExe pkgs.ripgrep} -q "${staleHosts}"; then
@@ -178,21 +193,20 @@
 
       formatter = treefmtEval.config.build.wrapper;
 
-      devShells.default = craneLib.devShell {
-        checks = builtins.removeAttrs self.checks.${system} ["pre-commit"];
+      devShells = harbor-rs.lib.mkDevShells {
+        inherit pkgs craneLib cross;
+        enableOsxcrossEnv = false;
         packages =
           [
-            pkgs.cargo-audit
-            pkgs.cargo-deny
+            pkgs.cargo-llvm-cov
             pkgs.cargo-nextest
             pkgs.mdbook
             pkgs.pkg-config
             pkgs.pre-commit
             pkgs.protobuf
-            pkgs.rust-analyzer
           ]
           ++ pre-commit-check.enabledPackages;
-        shellHook = pre-commit-check.shellHook;
+        extraShellHook = pre-commit-check.shellHook;
       };
     })
     // {

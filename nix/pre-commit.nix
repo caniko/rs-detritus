@@ -2,7 +2,10 @@
   pkgs,
   treefmtWrapper,
   rustToolchain ? null,
-}: {
+}: let
+  msrv = (builtins.fromTOML (builtins.readFile ../Cargo.toml)).workspace.package.rust-version;
+  msrvToolchain = pkgs.rust-bin.stable."${msrv}.0".default;
+in {
   treefmt = {
     enable = true;
     name = "treefmt";
@@ -30,8 +33,12 @@
   cargo-msrv = {
     enable = true;
     name = "cargo check MSRV";
-    entry = "${pkgs.rust-bin.stable."1.88.0".default}/bin/cargo check --workspace --all-features";
-    extraPackages = [pkgs.rust-bin.stable."1.88.0".default];
+    entry = toString (pkgs.writeShellScript "detritus-msrv-check" ''
+      export RUSTC=${msrvToolchain}/bin/rustc
+      export RUSTFLAGS="" CARGO_ENCODED_RUSTFLAGS=""
+      exec ${msrvToolchain}/bin/cargo check --workspace --all-features --locked
+    '');
+    extraPackages = [msrvToolchain];
     pass_filenames = false;
     stages = ["pre-push" "manual"];
   };
