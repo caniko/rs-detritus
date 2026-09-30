@@ -96,6 +96,7 @@ pub enum PanicHookError {
 pub fn install_panic_hook(config: PanicHookConfig) -> Result<(), PanicHookError> {
     fs::create_dir_all(config.spool_dir.join("pending"))?;
     fs::create_dir_all(config.spool_dir.join("sent"))?;
+    #[cfg(all(feature = "minidump", not(target_os = "android")))]
     install_minidumper_if_requested(&config)?;
     let previous = std::panic::take_hook();
     let previous = Arc::new(previous);
@@ -136,11 +137,6 @@ fn install_minidumper_if_requested(config: &PanicHookConfig) -> Result<(), Panic
         .get_or_init(|| parking_lot::Mutex::new(Vec::new()))
         .lock()
         .push(handle);
-    Ok(())
-}
-
-#[cfg(any(not(feature = "minidump"), target_os = "android"))]
-fn install_minidumper_if_requested(_config: &PanicHookConfig) -> Result<(), PanicHookError> {
     Ok(())
 }
 
