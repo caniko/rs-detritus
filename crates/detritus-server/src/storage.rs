@@ -129,6 +129,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn source_key_accepts_ordinary_components() {
         let key = SourceKey::new("detritus".to_owned(), "install-42".to_owned())
             .expect("ordinary components are valid");
@@ -136,6 +137,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn source_key_rejects_empty_components() {
         assert!(matches!(
             SourceKey::new(String::new(), "ok".to_owned()),
@@ -154,6 +156,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn source_key_rejects_path_traversal_components() {
         // The component becomes a directory name in blob/log paths, so dot and
         // separator sequences must never be accepted.
@@ -172,6 +175,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn validate_component_accepts_dotted_names_without_separators() {
         // A leading/embedded dot is fine; only `.`/`..`/separators are rejected.
         validate_component("project", "my.app").expect("dots inside a name are allowed");

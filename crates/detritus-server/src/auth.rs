@@ -25,6 +25,9 @@ use crate::{
     storage::SourceKey,
 };
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone)]
 pub(crate) struct TokenContext {
     pub(crate) id: String,

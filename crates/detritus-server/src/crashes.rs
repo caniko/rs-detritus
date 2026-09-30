@@ -25,6 +25,9 @@ use crate::{
 
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Serialize)]
 pub(crate) struct CrashResponse {
     pub(crate) id: String,

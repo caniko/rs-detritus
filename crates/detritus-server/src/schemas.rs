@@ -21,6 +21,10 @@ pub use detritus_protocol::schema::SchemaKind;
 use jsonschema::Validator;
 use tokio::fs;
 
+#[cfg(test)]
+#[path = "schemas/tests.rs"]
+mod failure_tests;
+
 /// One `[[schema]]` entry as parsed from `tokens.toml`.
 ///
 /// `path` is always resolved relative to the tokens config file's parent
@@ -151,6 +155,7 @@ mod tests {
     /// the accept-by-default contract: tenants without a registered schema
     /// are not gated.
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn empty_registry_validates_anything() {
         let registry = SchemaRegistry::empty();
         let payload = json!({"key": "value"});
@@ -172,6 +177,7 @@ mod tests {
     /// paths (as `load_security_config` does after joining against the tokens
     /// config parent), confirming the loader does not re-join against CWD.
     #[tokio::test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     async fn load_two_schemas_resolves_relative_paths() {
         // Locate the fixture directory next to this file's crate root.
         let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schemas");
@@ -220,6 +226,7 @@ mod tests {
     /// `Ok(())` — accept-by-default. Only projects with a registered schema
     /// are subject to validation.
     #[tokio::test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     async fn unknown_project_accepts_by_default() {
         let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schemas");
         let entries = vec![ProjectSchemaEntry {
@@ -248,6 +255,7 @@ mod tests {
     /// successfully and produce an empty registry.  This is the backward-
     /// compat guarantee that prevents existing deployments from breaking.
     #[tokio::test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     async fn tokens_config_without_schemas_loads_empty_registry() {
         use std::io::Write as _;
         // Write a minimal tokens.toml with no [[schema]] table.
@@ -284,6 +292,7 @@ source_prefix = "src/"
     /// must cause `load_security_config` to fail with
     /// `AuthConfigError::SchemaProjectMismatch`.
     #[tokio::test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     async fn tokens_config_schema_project_mismatch_errors() {
         use std::io::Write as _;
         let dir = TempDir::new().expect("tempdir");

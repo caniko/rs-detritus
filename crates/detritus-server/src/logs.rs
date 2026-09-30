@@ -30,6 +30,9 @@ use crate::{
 
 const WRITER_CHANNEL_CAPACITY: usize = 10_000;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone)]
 pub(crate) struct LogsHandler {
     writers: LogWriterPool,

@@ -1,3 +1,4 @@
+#![cfg_attr(all(test, coverage_nightly), feature(coverage_attribute))]
 //! Receiver-side Detritus server library.
 //!
 //! The `detritus-server` package ships the `detritusd` binary for normal

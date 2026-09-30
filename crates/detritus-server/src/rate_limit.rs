@@ -5,6 +5,9 @@ use tokio::sync::Mutex;
 
 use crate::{auth::TokenContext, storage::SourceKey};
 
+#[cfg(test)]
+mod tests;
+
 /// Per-token rate limits for log and crash ingestion.
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct RateLimitConfig {
