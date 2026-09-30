@@ -33,6 +33,39 @@ The v1 receiver exposes two ingestion endpoints:
 - On every tag `vX.Y.Z`, the release workflow runs the real `cargo publish` to crates.io using the `CRATES_IO_API_TOKEN` repo secret.
 - Release procedure: [RELEASING.md](RELEASING.md)
 
+## Testing and coverage
+
+Run the complete suite, including doctests, with:
+
+```sh
+nix develop -c cargo test --workspace --all-features --locked -j 4
+```
+
+The dedicated [coverage workflow](.github/workflows/coverage.yaml) enforces at
+least **90% line coverage independently for each crate**. Run the same gate locally:
+
+```sh
+nix develop -c bash scripts/coverage.sh
+```
+
+JSON reports are written to `target/coverage/<crate>.json`; browsable reports are
+at `target/coverage/<crate>/html/index.html`. The gate measures handwritten
+production code, including `detritusd`. Generated protobuf bindings, build
+scripts, examples, and test code are excluded. Inline unit-test functions use
+`#[cfg_attr(coverage_nightly, coverage(off))]`; new test modules belong in
+`src/<module>/tests.rs` or `tests/` so they stay outside the coverage denominator.
+The script starts with a clean coverage build to avoid stale instrumentation.
+
+Tests cover offline replay and upload failures, panic artifacts, native Linux
+minidumps in subprocesses, authentication against legacy Argon2 hashes, malformed
+multipart requests, schema validation, concurrent deduplication, rate limits,
+retention, and server startup/shutdown. Isolated feature checks run in CI:
+
+```sh
+nix develop -c cargo test -p detritus-client --no-default-features --locked -j 4
+nix develop -c cargo test -p detritus-protocol --no-default-features --locked -j 4
+```
+
 ## License
 
 Licensed under the [Apache License, Version 2.0](LICENSE).

@@ -9,12 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Independent 90% production-line coverage gates and downloadable HTML/JSON
+  reports for all three crates, plus isolated feature checks.
+- Regression tests for offline replay, timeout persistence, native Linux crash
+  capture, malformed uploads, legacy authentication, concurrent deduplication,
+  rate-limit isolation, schema errors, and graceful CLI/writer shutdown.
 - Stored-config crash shipping APIs for flushing spooled crashes with endpoints
   and sent-entry retention recovered per entry while keeping the bearer token
   caller-supplied and off disk.
 
 ### Changed
 
+- Upgrade Cargo dependencies to current releases, including Tonic/Prost,
+  Argon2, jsonschema, Reqwest, TOML, SHA-2, tower-http, and zstd, while retaining
+  the Rust 1.88 MSRV and existing wire/spool formats.
+- Refresh Nix inputs and the Harbor pin; include matching LLVM coverage tools in
+  the nightly development shell. Derive the MSRV hook from Cargo metadata.
+- Nix outputs target x86_64 Linux, aarch64 Linux, and aarch64 macOS; the upgraded
+  Nixpkgs 26.11 input has retired x86_64 macOS support.
 - Move the Plinth flake input to GitHub and refresh locked dependencies.
 - CI workflows migrated from container-based Rust runners to Nix-based runners
   with per-step runner tier split (format on `codeberg-tiny`, test on
@@ -22,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `atlas-nix-trusted`). Badge updated from `CI-drift` to `CI-managed`.
 - Nix flake inputs `rust-overlay`, `treefmt-nix`, and `git-hooks` now follow
   the workspace `nixpkgs` input for consistency.
+
+### Fixed
+
+- Retention preserves attachment blobs referenced by live crash indexes.
+- Exporter shutdown flushes queued records and terminates when the last layer
+  is dropped; all export attempts honor the configured timeout and persist
+  timed-out batches for replay.
 
 ### Removed
 

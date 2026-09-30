@@ -1,0 +1,41 @@
+# Workspace-wide checks complement the Simit-generated per-crate workflows.
+name: Coverage
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: 4
+      NIX_CONFIG: "experimental-features = nix-command flakes"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Install Nix
+        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31
+      - name: Test client without native minidumps
+        run: nix develop -c cargo test -p detritus-client --no-default-features --locked
+      - name: Test protocol without multipart
+        run: nix develop -c cargo test -p detritus-protocol --no-default-features --locked
+      - name: Enforce 90% line coverage for each crate
+        run: nix develop -c bash scripts/coverage.sh
+      - name: Upload per-crate coverage reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage
+          path: target/coverage
+          if-no-files-found: error
