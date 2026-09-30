@@ -1,9 +1,10 @@
 //! Protocol roundtrip smoke tests.
 
 use chrono::Utc;
+#[cfg(feature = "multipart")]
+use detritus_protocol::{AttachmentManifest, CrashAttachment, CrashEnvelope};
 use detritus_protocol::{
-    AttachmentManifest, BuildInfo, CrashAttachment, CrashEnvelope, CrashKind, CrashMetadata,
-    PROTOCOL_VERSION, SourceId,
+    BuildInfo, CrashKind, CrashMetadata, PROTOCOL_VERSION, SourceId,
     otlp::{
         common::{AnyValue, KeyValue, any_value},
         logs::LogRecord,
@@ -60,6 +61,7 @@ fn roundtrip_crash_metadata_json() {
     }
 }
 
+#[cfg(feature = "multipart")]
 #[tokio::test]
 async fn roundtrip_multipart() {
     let mut metadata = crash_metadata(CrashKind::Minidump);

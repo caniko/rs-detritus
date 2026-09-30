@@ -50,6 +50,10 @@ tonic-build = "0.13"
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
 
+[[example]]
+name = "crash_envelope"
+required-features = ["multipart"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

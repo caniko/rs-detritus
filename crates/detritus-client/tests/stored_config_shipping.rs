@@ -49,7 +49,7 @@ async fn stored_config_shipper_recovers_endpoint_and_posts_to_server() {
             .await
             .expect("ship using stored config");
     assert_eq!(shipped, 1);
-    assert!(entries(spool.path().join("pending")).is_empty());
+    assert_eq!(entries(spool.path().join("pending")), Vec::<PathBuf>::new());
     assert_eq!(entries(spool.path().join("sent")).len(), 1);
 
     shutdown.send(()).expect("send shutdown");
@@ -82,7 +82,7 @@ async fn stored_config_shipper_errors_when_config_is_missing() {
 
     assert!(matches!(error, ShipError::MissingStoredConfig(path) if path == entry));
     assert!(entry.exists());
-    assert!(entries(sent).is_empty());
+    assert_eq!(entries(sent), Vec::<PathBuf>::new());
 }
 
 async fn spawn_server(

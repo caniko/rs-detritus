@@ -63,7 +63,7 @@ async fn panic_hook_spools_chains_and_ships_next_launch() {
     .await
     .expect("ship pending");
     assert_eq!(shipped, 1);
-    assert!(entries(spool.path().join("pending")).is_empty());
+    assert_eq!(entries(spool.path().join("pending")), Vec::<PathBuf>::new());
     assert_eq!(entries(spool.path().join("sent")).len(), 1);
 
     shutdown.send(()).expect("send shutdown");
