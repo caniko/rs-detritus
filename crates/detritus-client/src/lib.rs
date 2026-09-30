@@ -13,9 +13,9 @@
 //! Public API is limited to [`Layer`], [`LayerBuilder`], [`install_panic_hook`],
 //! [`ship_pending_crashes`], [`ship_pending_crashes_with_config`],
 //! [`ship_pending_crashes_using_stored_config`],
-//! [`ship_pending_crashes_using_stored_config_with_config`], [`ShipConfig`],
+//! [`ship_pending_crashes_using_stored_config_with_config`], [`CrashShipper`], [`ShipConfig`],
 //! [`DEFAULT_SENT_RETENTION_DAYS`], [`PanicHookConfig`], [`PanicKind`], and
-//! [`SourceId`].
+//! [`SourceId`], and the compression and TLS configuration re-exports.
 //! Everything else is an implementation detail and may change between releases.
 //!
 //! ```no_run
@@ -72,10 +72,14 @@ pub use layer::{Layer, LayerBuilder, LayerError};
 pub use panic_hook::{PanicHookConfig, PanicHookError, PanicKind, install_panic_hook};
 /// Offline crash spool shipping API.
 pub use shipper::{
-    DEFAULT_SENT_RETENTION_DAYS, ShipConfig, ShipError, ship_pending_crashes,
+    CrashShipper, DEFAULT_SENT_RETENTION_DAYS, ShipConfig, ShipError, ship_pending_crashes,
     ship_pending_crashes_using_stored_config, ship_pending_crashes_using_stored_config_with_config,
     ship_pending_crashes_with_config,
 };
+/// Supported OTLP/gRPC message compression algorithms.
+pub use tonic::codec::CompressionEncoding;
+/// TLS configuration, CA certificates, and client identities for log transport.
+pub use tonic::transport::{Certificate, ClientTlsConfig, Identity};
 
 #[cfg(test)]
 mod tests {

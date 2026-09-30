@@ -26,7 +26,9 @@ pub use janitor::RetentionConfig;
 /// Rate-limit configuration for logs and crash uploads.
 pub use rate_limit::RateLimitConfig;
 /// JSON Schema registry for per-tenant payload validation.
-pub use schemas::{ProjectSchemaEntry, SchemaKind, SchemaRegistry};
+pub use schemas::{
+    ProjectSchemaEntry, SchemaKind, SchemaOptions, SchemaRegistry, SchemaResourceEntry,
+};
 /// Server configuration, error type, and serving entry points.
 pub use server::{ServerConfig, ServerError, serve, serve_with_shutdown};
 

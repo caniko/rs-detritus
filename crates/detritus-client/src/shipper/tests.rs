@@ -1,5 +1,153 @@
 use super::*;
 
+#[tokio::test]
+async fn successive_scans_reuse_one_http1_connection_with_streamed_responses() {
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+    let root = tempfile::tempdir().unwrap();
+    let entry = root.path().join("pending/first");
+    fs::create_dir_all(&entry).unwrap();
+    let metadata = CrashMetadata::new(
+        detritus_protocol::SourceId {
+            project: "tests".into(),
+            platform: "linux".into(),
+            version: "1".into(),
+            install_id: uuid::Uuid::nil(),
+        },
+        chrono::Utc::now(),
+        detritus_protocol::CrashKind::PanicTarball,
+        detritus_protocol::BuildInfo {
+            git_sha: "test".into(),
+            profile: "test".into(),
+            target_triple: "test".into(),
+        },
+        serde_json::json!({}),
+    );
+    let encoded = serde_json::to_vec(&metadata).unwrap();
+    fs::write(entry.join("metadata.json"), &encoded).unwrap();
+    fs::write(entry.join("dump.bin"), b"dump").unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint: Url = format!("http://{}", listener.local_addr().unwrap())
+        .parse()
+        .unwrap();
+    let server = tokio::spawn(async move {
+        // A second TCP connection is deliberately never accepted.
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut reader = BufReader::new(socket);
+        for _ in 0..2 {
+            let mut length = None;
+            loop {
+                let mut line = String::new();
+                assert!(reader.read_line(&mut line).await.unwrap() > 0);
+                if line == "\r\n" {
+                    break;
+                }
+                if let Some((key, value)) = line.split_once(':')
+                    && key.eq_ignore_ascii_case("content-length")
+                {
+                    length = Some(value.trim().parse::<usize>().unwrap());
+                }
+            }
+            let mut body = vec![0; length.unwrap()];
+            reader.read_exact(&mut body).await.unwrap();
+            reader
+                .get_mut()
+                .write_all(b"HTTP/1.1 201 Created\r\nContent-Length: 8\r\n\r\n")
+                .await
+                .unwrap();
+            // Deliver the body after headers to ensure the client must drain it.
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            reader.get_mut().write_all(b"accepted").await.unwrap();
+        }
+    });
+    crate::install_default_crypto_provider();
+    let client = reqwest::Client::builder()
+        .http1_only()
+        .timeout(Duration::from_secs(2))
+        .retry(reqwest::retry::never())
+        .build()
+        .unwrap();
+    let shipper = CrashShipper::with_client(client, SecretString::from("token"));
+    assert_eq!(
+        shipper
+            .ship_pending(root.path(), endpoint.clone())
+            .await
+            .unwrap(),
+        1
+    );
+    let second = root.path().join("pending/second");
+    fs::create_dir_all(&second).unwrap();
+    fs::write(second.join("metadata.json"), encoded).unwrap();
+    fs::write(second.join("dump.bin"), b"second dump").unwrap();
+    assert_eq!(
+        shipper.ship_pending(root.path(), endpoint).await.unwrap(),
+        1
+    );
+    server.await.unwrap();
+    assert_eq!(pending_entries(&root.path().join("sent")).unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn custom_transport_timeout_keeps_pending_crashes_and_redacts_token() {
+    let root = tempfile::tempdir().unwrap();
+    let entry = root.path().join("pending/stalled");
+    fs::create_dir_all(&entry).unwrap();
+    let metadata = CrashMetadata::new(
+        detritus_protocol::SourceId {
+            project: "tests".into(),
+            platform: "linux".into(),
+            version: "1".into(),
+            install_id: uuid::Uuid::nil(),
+        },
+        chrono::Utc::now(),
+        detritus_protocol::CrashKind::PanicTarball,
+        detritus_protocol::BuildInfo {
+            git_sha: "test".into(),
+            profile: "test".into(),
+            target_triple: "test".into(),
+        },
+        serde_json::json!({}),
+    );
+    fs::write(
+        entry.join("metadata.json"),
+        serde_json::to_vec(&metadata).unwrap(),
+    )
+    .unwrap();
+    fs::write(entry.join("dump.bin"), b"dump").unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    crate::install_default_crypto_provider();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(50))
+        .build()
+        .unwrap();
+    let shipper = CrashShipper::with_client(client, SecretString::from("private-token"))
+        .with_config(ShipConfig::default().with_dump_compression_level(1));
+    assert!(!format!("{shipper:?}").contains("private-token"));
+    let result = tokio::time::timeout(
+        Duration::from_secs(2),
+        shipper.ship_pending(
+            root.path(),
+            format!("http://{}", listener.local_addr().unwrap())
+                .parse()
+                .unwrap(),
+        ),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(result, Err(ShipError::Http(error)) if error.is_timeout()));
+    assert!(entry.exists());
+    assert_eq!(
+        pending_entries(&root.path().join("sent")).unwrap(),
+        Vec::<PathBuf>::new()
+    );
+    let shipper = CrashShipper::new(SecretString::from("private\ninvalid")).unwrap();
+    assert!(matches!(
+        shipper
+            .ship_pending(root.path(), "http://localhost:1".parse().unwrap())
+            .await,
+        Err(ShipError::InvalidToken)
+    ));
+}
+
 #[test]
 fn retention_removes_only_expired_directories_and_saturates_extreme_values() {
     let dir = tempfile::tempdir().unwrap();

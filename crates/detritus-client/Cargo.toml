@@ -1,6 +1,6 @@
 [package]
 name = "detritus-client"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -43,7 +43,7 @@ required-features = ["minidump"]
 workspace = true
 
 [dependencies]
-detritus-protocol = { path = "../detritus-protocol", version = "0.1.0", features = [
+detritus-protocol = { path = "../detritus-protocol", version = "0.2.0", features = [
   "multipart",
 ] }
 
@@ -51,7 +51,12 @@ chrono = { workspace = true, features = ["serde"] }
 flate2 = "1.1.10"
 fs2 = "0.4.3"
 prost = { workspace = true }
-reqwest = { workspace = true, features = ["multipart", "stream", "gzip"] }
+reqwest = { workspace = true, features = [
+  "multipart",
+  "stream",
+  "gzip",
+  "zstd",
+] }
 rustls = { workspace = true }
 secrecy = "0.10.3"
 serde = { workspace = true }
@@ -66,7 +71,12 @@ tokio = { workspace = true, features = [
   "sync",
   "time",
 ] }
-tonic = { workspace = true }
+tonic = { workspace = true, features = [
+  "gzip",
+  "zstd",
+  "tls-aws-lc",
+  "tls-native-roots",
+] }
 tracing = { workspace = true }
 tracing-core = "0.1.36"
 tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"] }
@@ -78,7 +88,7 @@ minidumper-child = { version = "0.5.0", optional = true }
 parking_lot = { version = "0.12.5", optional = true }
 
 [dev-dependencies]
-detritus-server = { path = "../detritus-server", version = "0.1.0" }
+detritus-server = { path = "../detritus-server", version = "0.2.0" }
 tempfile = "3.27.0"
 tokio-rustls = { version = "0.26.6", default-features = false, features = [
   "aws_lc_rs",

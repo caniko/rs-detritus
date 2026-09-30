@@ -3,7 +3,7 @@
 use std::{net::SocketAddr, path::Path, time::Duration};
 
 use chrono::Utc;
-use detritus::{Layer, SourceId};
+use detritus::{CompressionEncoding, Layer, SourceId};
 use detritus_server::{
     RateLimitConfig, RetentionConfig, SchemaRegistry, ServerConfig, TestToken, TokenStore,
     serve_with_shutdown,
@@ -18,18 +18,30 @@ const INSTALL_ID: &str = "11111111-1111-1111-1111-111111111111";
 
 #[tokio::test(flavor = "multi_thread")]
 async fn layer_smoke_exports_tracing_events_to_server() {
+    for compression in [
+        None,
+        Some(CompressionEncoding::Gzip),
+        Some(CompressionEncoding::Zstd),
+    ] {
+        exports_tracing_events(compression).await;
+    }
+}
+
+async fn exports_tracing_events(compression: Option<CompressionEncoding>) {
     let temp = TempDir::new().expect("temp dir");
     let queue = TempDir::new().expect("queue dir");
     let (addr, shutdown, handle) = spawn_server(temp.path()).await;
-    let layer = Layer::builder()
+    let mut builder = Layer::builder()
         .endpoint(format!("http://{addr}").parse().expect("endpoint"))
         .token(SecretString::from("secret-token"))
         .source(source())
         .queue_dir(queue.path().to_path_buf())
         .batch_size(10)
-        .flush_interval(Duration::from_secs(60))
-        .build()
-        .expect("build layer");
+        .flush_interval(Duration::from_secs(60));
+    if let Some(encoding) = compression {
+        builder = builder.compression(encoding);
+    }
+    let layer = builder.build().expect("build layer");
     let subscriber = Registry::default().with(layer.clone());
 
     tracing::subscriber::with_default(subscriber, || {
@@ -60,6 +72,92 @@ async fn layer_smoke_exports_tracing_events_to_server() {
             .iter()
             .all(|line| line.contains("client sdk smoke log"))
     );
+    assert!(
+        std::fs::read_dir(queue.path()).unwrap().all(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .extension()
+                .is_none_or(|ext| ext != "protobuf")
+        }),
+        "successful compressed exports must not be spooled"
+    );
+}
+
+#[tokio::test]
+async fn tls_private_ca_exports_share_one_connection_across_flushes() {
+    use detritus::{Certificate, ClientTlsConfig};
+    use std::sync::Arc;
+    use tokio_rustls::{
+        TlsAcceptor,
+        rustls::pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
+    };
+    const CERT: &[u8] = include_bytes!("fixtures/tls/localhost-cert.pem");
+    const KEY: &[u8] = include_bytes!("fixtures/tls/localhost-key.pem");
+    detritus::install_default_crypto_provider();
+    let data = TempDir::new().unwrap();
+    let queue = TempDir::new().unwrap();
+    let (addr, shutdown, handle) = spawn_server(data.path()).await;
+    let mut config = rustls::ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(
+            vec![CertificateDer::from_pem_slice(CERT).unwrap()],
+            PrivateKeyDer::from_pem_slice(KEY).unwrap(),
+        )
+        .unwrap();
+    config.alpn_protocols = vec![b"h2".to_vec()];
+    let acceptor = TlsAcceptor::from(Arc::new(config));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let tls_addr = listener.local_addr().unwrap();
+    let proxy = tokio::spawn(async move {
+        // Accept exactly one connection: recreating a channel on each flush
+        // would stall the second request and fail the test.
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut tls = acceptor.accept(socket).await.unwrap();
+        let mut upstream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        tokio::io::copy_bidirectional(&mut tls, &mut upstream)
+            .await
+            .unwrap();
+    });
+    let layer = Layer::builder()
+        .endpoint(
+            format!("https://localhost:{}", tls_addr.port())
+                .parse()
+                .unwrap(),
+        )
+        .tls_config(ClientTlsConfig::new().ca_certificate(Certificate::from_pem(CERT)))
+        .compression(CompressionEncoding::Zstd)
+        .token(SecretString::from("secret-token"))
+        .source(source())
+        .queue_dir(queue.path().to_owned())
+        .flush_interval(Duration::from_secs(60))
+        .build()
+        .unwrap();
+    // Synchronize past the interval's initial tick before emitting records.
+    layer.flush().await.unwrap();
+    for index in 0..2 {
+        tracing::subscriber::with_default(Registry::default().with(layer.clone()), || {
+            tracing::info!(index, "private CA export");
+        });
+        layer.flush().await.unwrap();
+    }
+    drop(layer);
+    tokio::time::timeout(Duration::from_secs(5), proxy)
+        .await
+        .unwrap()
+        .unwrap();
+    shutdown.send(()).unwrap();
+    handle.await.unwrap().unwrap();
+    let text = tokio::fs::read_to_string(
+        data.path()
+            .join("logs/detritus")
+            .join(INSTALL_ID)
+            .join(format!("{}.ndjson", Utc::now().date_naive())),
+    )
+    .await
+    .unwrap();
+    assert_eq!(text.lines().count(), 2);
+    assert!(text.lines().all(|line| line.contains("private CA export")));
 }
 
 #[tokio::test]

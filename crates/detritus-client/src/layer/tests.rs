@@ -24,6 +24,9 @@ fn worker(dir: &std::path::Path) -> (Layer, Worker) {
             flush_timeout: Duration::from_millis(50),
             queue_dir: dir.to_owned(),
             sample_rate: 1.0,
+            compression: None,
+            tls_config: None,
+            channel: OnceCell::new(),
             receiver,
         },
     )

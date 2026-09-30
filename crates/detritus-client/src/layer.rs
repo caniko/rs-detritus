@@ -16,8 +16,12 @@ use detritus_protocol::{
     },
 };
 use secrecy::{ExposeSecret, SecretString};
-use tokio::sync::{mpsc, oneshot};
-use tonic::metadata::MetadataValue;
+use tokio::sync::{OnceCell, mpsc, oneshot};
+use tonic::{
+    codec::CompressionEncoding,
+    metadata::MetadataValue,
+    transport::{Channel, ClientTlsConfig, Endpoint},
+};
 use tracing::{Event, Subscriber};
 use tracing_core::{Level, field};
 use tracing_subscriber::{Layer as SubscriberLayer, layer::Context};
@@ -75,6 +79,8 @@ pub struct LayerBuilder {
     flush_timeout: Duration,
     queue_dir: Option<PathBuf>,
     sample_rate: f64,
+    compression: Option<CompressionEncoding>,
+    tls_config: Option<ClientTlsConfig>,
 }
 
 impl Default for LayerBuilder {
@@ -88,6 +94,8 @@ impl Default for LayerBuilder {
             flush_timeout: DEFAULT_FLUSH_TIMEOUT,
             queue_dir: None,
             sample_rate: 1.0,
+            compression: None,
+            tls_config: None,
         }
     }
 }
@@ -149,6 +157,25 @@ impl LayerBuilder {
         self
     }
 
+    /// Compresses exported gRPC messages with gzip or zstd.
+    ///
+    /// Requests are uncompressed by default for compatibility with older receivers.
+    #[must_use]
+    pub fn compression(mut self, encoding: CompressionEncoding) -> Self {
+        self.compression = Some(encoding);
+        self
+    }
+
+    /// Sets HTTPS transport options, including custom CA roots and mutual TLS.
+    ///
+    /// HTTPS endpoints use system trust roots by default. A custom configuration
+    /// can add a private CA, override the expected domain, or supply a client identity.
+    #[must_use]
+    pub fn tls_config(mut self, config: ClientTlsConfig) -> Self {
+        self.tls_config = Some(config);
+        self
+    }
+
     /// Builds the layer and spawns its background exporter on the current Tokio runtime.
     ///
     /// # Errors
@@ -171,6 +198,9 @@ impl LayerBuilder {
             flush_timeout: self.flush_timeout,
             queue_dir,
             sample_rate: self.sample_rate,
+            compression: self.compression,
+            tls_config: self.tls_config,
+            channel: OnceCell::new(),
             receiver,
         };
         // The exporter is a process-lifetime background task: it is intentionally
@@ -234,6 +264,9 @@ struct Worker {
     queue_dir: PathBuf,
     sample_rate: f64,
     receiver: mpsc::Receiver<WorkerMessage>,
+    compression: Option<CompressionEncoding>,
+    tls_config: Option<ClientTlsConfig>,
+    channel: OnceCell<Channel>,
 }
 
 impl Worker {
@@ -241,6 +274,9 @@ impl Worker {
         let mut batch = Vec::with_capacity(self.batch_size);
         let mut interval = tokio::time::interval(self.flush_interval);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        // Tokio intervals tick immediately once. Consume that startup tick so
+        // the first periodic export waits the configured batching interval.
+        interval.tick().await;
         self.drain_spooled().await;
 
         loop {
@@ -295,11 +331,7 @@ impl Worker {
                 continue;
             };
             if matches!(
-                tokio::time::timeout(
-                    self.flush_timeout,
-                    export_request(&self.endpoint, &self.token, request),
-                )
-                .await,
+                tokio::time::timeout(self.flush_timeout, self.export_request(request)).await,
                 Ok(Ok(()))
             ) {
                 let _ = std::fs::remove_file(path);
@@ -321,51 +353,73 @@ impl Worker {
             return Ok(());
         }
         let request = export_request_for(&self.source, records);
-        let error = match tokio::time::timeout(
-            self.flush_timeout,
-            export_request(&self.endpoint, &self.token, request.clone()),
-        )
-        .await
-        {
-            Ok(Ok(())) => return Ok(()),
-            Ok(Err(error)) => error.to_string(),
-            Err(_) => "flush timed out".to_owned(),
-        };
+        let error =
+            match tokio::time::timeout(self.flush_timeout, self.export_request(request.clone()))
+                .await
+            {
+                Ok(Ok(())) => return Ok(()),
+                Ok(Err(error)) => error.to_string(),
+                Err(_) => "flush timed out".to_owned(),
+            };
         spool::write_log_batch(&self.queue_dir, &request)
             .map_err(|io| LayerError::Flush(io.to_string()))?;
         Err(LayerError::Flush(error))
     }
-}
 
-async fn export_request(
-    endpoint: &Url,
-    token: &SecretString,
-    request: ExportLogsServiceRequest,
-) -> Result<(), tonic::Status> {
-    let mut client = LogsServiceClient::connect(endpoint.to_string())
-        .await
-        .map_err(|error| {
-            tonic::Status::unavailable(format!(
-                "failed to connect to observability endpoint {endpoint}: {error}"
-            ))
-        })?;
-    let mut request = tonic::Request::new(request);
-    request.metadata_mut().insert(
-        GRPC_VERSION_KEY,
-        MetadataValue::try_from(PROTOCOL_VERSION.to_string()).map_err(|_| {
-            tonic::Status::internal("protocol version is not a valid gRPC metadata value")
-        })?,
-    );
-    request.metadata_mut().insert(
-        "authorization",
-        // Build the header message without echoing the token, so a malformed
-        // bearer value can never leak into a Status string.
-        MetadataValue::try_from(format!("Bearer {}", token.expose_secret())).map_err(|_| {
+    async fn export_request(&self, request: ExportLogsServiceRequest) -> Result<(), tonic::Status> {
+        // Channel clones share Tonic's connection and reconnect machinery. Cache
+        // only successful initialization so offline startup can recover on replay.
+        // https://docs.rs/tonic/0.14.6/tonic/transport/struct.Channel.html
+        let channel = self
+            .channel
+            .get_or_try_init(|| async {
+                crate::install_default_crypto_provider();
+                let connect = async {
+                    let mut endpoint = Endpoint::from_shared(self.endpoint.to_string())?
+                        .connect_timeout(self.flush_timeout)
+                        .timeout(self.flush_timeout);
+                    if let Some(config) = &self.tls_config {
+                        endpoint = endpoint.tls_config(config.clone())?;
+                    }
+                    endpoint.connect().await
+                };
+                connect.await.map_err(|error| {
+                    tonic::Status::unavailable(format!(
+                        "failed to connect to observability endpoint {}: {error}",
+                        self.endpoint
+                    ))
+                })
+            })
+            .await?;
+        let mut client = LogsServiceClient::new(channel.clone())
+            .accept_compressed(CompressionEncoding::Gzip)
+            .accept_compressed(CompressionEncoding::Zstd);
+        if let Some(encoding) = self.compression {
+            client = client.send_compressed(encoding);
+        }
+        let mut request = tonic::Request::new(request);
+        request.set_timeout(self.flush_timeout);
+        request.metadata_mut().insert(
+            GRPC_VERSION_KEY,
+            MetadataValue::try_from(PROTOCOL_VERSION.to_string()).map_err(|_| {
+                tonic::Status::internal("protocol version is not a valid gRPC metadata value")
+            })?,
+        );
+        // Sensitive metadata is omitted by Debug and marked never-indexed for HTTP/2.
+        let mut authorization = MetadataValue::try_from(format!(
+            "Bearer {}",
+            self.token.expose_secret()
+        ))
+        .map_err(|_| {
             tonic::Status::internal("authorization bearer token is not a valid HTTP header value")
-        })?,
-    );
-    client.export(request).await?;
-    Ok(())
+        })?;
+        authorization.set_sensitive(true);
+        request
+            .metadata_mut()
+            .insert("authorization", authorization);
+        client.export(request).await?;
+        Ok(())
+    }
 }
 
 fn export_request_for(source: &SourceId, records: Vec<LogRecord>) -> ExportLogsServiceRequest {

@@ -9,6 +9,11 @@ fn main() {
     };
 
     if let Some(spool) = std::env::var_os("DETRITUS_NATIVE_SPOOL") {
+        assert_eq!(
+            std::env::args_os().nth(1).unwrap(),
+            "--native-crash-child",
+            "reporter must preserve application arguments"
+        );
         // The reporter re-executes this binary with the same config. It exits
         // inside install_panic_hook after handling the parent's native crash.
         install_panic_hook(PanicHookConfig {
@@ -37,6 +42,7 @@ fn main() {
 
     let spool = tempfile::tempdir().unwrap();
     let mut child = Command::new(std::env::current_exe().unwrap())
+        .arg("--native-crash-child")
         .env("DETRITUS_NATIVE_SPOOL", spool.path())
         .spawn()
         .unwrap();

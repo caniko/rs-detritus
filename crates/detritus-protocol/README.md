@@ -2,14 +2,14 @@
 
 [![Crates.io](https://img.shields.io/crates/v/detritus-protocol.svg)](https://crates.io/crates/detritus-protocol)
 [![Documentation](https://docs.rs/detritus-protocol/badge.svg)](https://docs.rs/detritus-protocol)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/caniko/rs-detritus/blob/trunk/LICENSE)
 
 `detritus-protocol` contains the shared wire types for Detritus telemetry and crash ingestion.
 It is the contract used by `detritus-client` when producing payloads and by `detritus-server`
 when validating and storing them.
 The crate covers source identity, crash metadata, crash envelopes, multipart crash helpers,
 and a curated OpenTelemetry Protocol logs facade.
-Version 0.1.0 intentionally covers OTLP logs only; traces and metrics are not part of this
+Version 0.2.0 intentionally covers OTLP logs only; traces and metrics are not part of this
 published surface yet.
 
 ## Quick start
@@ -70,16 +70,19 @@ Features are additive: disabling default features removes only optional multipar
 ## Compatibility
 
 - Detritus protocol version: `PROTOCOL_VERSION == 1`.
-- Detritus crate version: v0.1.0.
+- Detritus crate version: 0.2.0.
+- Public OTLP types use Tonic/Prost 0.14; existing protocol-v1 wire payloads remain compatible.
 - OTLP scope: logs export requests, responses, records, resources, and service stubs.
 - MSRV: Rust 1.88.
 - Edition: Rust 2024.
 
 ## Public surface
 
-The stable v0.1.0 surface is the root constants, crash schema types, `SourceId`, the curated
+The public 0.2.0 surface is the root constants, crash schema types, `SourceId`, the curated
 `otlp::{common, resource, logs}` facade, and feature-gated multipart helpers.
 Generated protobuf package modules are intentionally hidden behind the curated facade.
+The facade includes `otlp::common::EntityRef` for resource entity references and
+`otlp::logs::ExportLogsPartialSuccess` for constructing standard OTLP responses.
 Downstream code should prefer root re-exports such as `detritus_protocol::CrashEnvelope` and
 `detritus_protocol::SourceId`.
 
@@ -92,11 +95,11 @@ Downstream code should prefer root re-exports such as `detritus_protocol::CrashE
 ## Documentation
 
 - [API docs](https://docs.rs/detritus-protocol)
-- [Workspace](https://codeberg.org/caniko/rs-detritus)
-- [Documentation book](https://caniko.codeberg.page/rs-detritus/)
-- [Architecture](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/concepts/architecture.md)
-- [Storage layout](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/concepts/storage.md)
+- [Workspace](https://github.com/caniko/rs-detritus)
+- [Documentation book](https://detritus.tartanoglu.com/docs/)
+- [Architecture](https://github.com/caniko/rs-detritus/blob/trunk/docs/src/concepts/architecture.md)
+- [Storage layout](https://github.com/caniko/rs-detritus/blob/trunk/docs/src/concepts/storage.md)
 
 ## License
 
-Licensed under the [Apache License, Version 2.0](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/LICENSE).
+Licensed under the [Apache License, Version 2.0](https://github.com/caniko/rs-detritus/blob/trunk/LICENSE).

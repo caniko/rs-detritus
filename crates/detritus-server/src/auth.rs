@@ -21,7 +21,7 @@ use tokio::fs;
 use crate::{
     metrics::Metrics,
     rate_limit::RateLimitConfig,
-    schemas::{ProjectSchemaEntry, SchemaRegistry},
+    schemas::{ProjectSchemaEntry, SchemaOptions, SchemaRegistry},
     storage::SourceKey,
 };
 
@@ -140,7 +140,7 @@ pub struct SecurityConfig {
     pub token_store: TokenStore,
     /// Per-token and per-source rate limit configuration.
     pub rate_limit: RateLimitConfig,
-    /// Per-tenant JSON Schema registry (no-op in Phase 01).
+    /// Per-tenant JSON Schema registry.
     pub schema_registry: SchemaRegistry,
 }
 
@@ -190,7 +190,12 @@ pub async fn load_security_config(path: &Path) -> Result<SecurityConfig, AuthCon
     }
 
     let token_store = TokenStore::from_entries(config.token)?;
-    let schema_registry = SchemaRegistry::load(&schema_entries).await?;
+    let mut schema_options = config.schema_validation;
+    for resource in &mut schema_options.resources {
+        resource.path = config_dir.join(&resource.path);
+    }
+    let schema_registry =
+        SchemaRegistry::load_with_options(&schema_entries, &schema_options).await?;
     Ok(SecurityConfig {
         token_store,
         rate_limit: config.rate_limit.unwrap_or_default(),
@@ -233,6 +238,8 @@ struct TokensConfig {
     /// producing a [`SchemaRegistry::empty()`] registry.
     #[serde(default)]
     schema: Vec<SchemaEntry>,
+    #[serde(default)]
+    schema_validation: SchemaOptions,
 }
 
 #[derive(Debug, Deserialize)]

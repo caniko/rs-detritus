@@ -48,6 +48,10 @@
         overlays = [(import rust-overlay)];
       };
       lib = pkgs.lib;
+      version = (builtins.fromTOML (builtins.readFile ./crates/detritus-server/Cargo.toml)).package.version;
+      msrv = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.rust-version;
+      msrvToolchain = pkgs.rust-bin.stable."${msrv}.0".default;
+      msrvCraneLib = (crane.mkLib pkgs).overrideToolchain (_: msrvToolchain);
       toolchain = harbor-rs.lib.mkToolchain {
         inherit pkgs;
         channel = "nightly";
@@ -77,9 +81,8 @@
       ];
 
       commonArgs = {
-        inherit src nativeBuildInputs;
+        inherit src nativeBuildInputs version;
         pname = "detritus";
-        version = "0.1.0";
         cargoExtraArgs = "-p detritus-server";
         strictDeps = true;
         SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
@@ -121,7 +124,7 @@
 
       docs = pkgs.stdenv.mkDerivation {
         pname = "detritus-docs";
-        version = "0.1.0";
+        inherit version;
         src = lib.fileset.toSource {
           root = ./.;
           fileset = lib.fileset.maybeMissing ./docs;
@@ -163,9 +166,8 @@
         inherit detritus;
         formatting = treefmtEval.config.build.check self;
         fmt = craneLib.cargoFmt {
-          inherit src;
+          inherit src version;
           pname = "detritus";
-          version = "0.1.0";
         };
         clippy = craneLib.cargoClippy (commonArgs
           // {
@@ -193,21 +195,42 @@
 
       formatter = treefmtEval.config.build.wrapper;
 
-      devShells = harbor-rs.lib.mkDevShells {
-        inherit pkgs craneLib cross;
-        enableOsxcrossEnv = false;
-        packages =
-          [
-            pkgs.cargo-llvm-cov
-            pkgs.cargo-nextest
-            pkgs.mdbook
-            pkgs.pkg-config
-            pkgs.pre-commit
-            pkgs.protobuf
-          ]
-          ++ pre-commit-check.enabledPackages;
-        extraShellHook = pre-commit-check.shellHook;
-      };
+      devShells =
+        (harbor-rs.lib.mkDevShells {
+          inherit pkgs craneLib cross;
+          enableOsxcrossEnv = false;
+          packages =
+            [
+              pkgs.cargo-llvm-cov
+              pkgs.cargo-nextest
+              pkgs.mdbook
+              pkgs.pkg-config
+              pkgs.pre-commit
+              pkgs.protobuf
+            ]
+            ++ pre-commit-check.enabledPackages;
+          extraShellHook = pre-commit-check.shellHook;
+        })
+        // {
+          msrv = harbor-rs.lib.mkDevShell {
+            inherit pkgs cross;
+            craneLib = msrvCraneLib;
+            cargoConfig = null;
+            enableWindowsEnv = false;
+            enableOsxcrossEnv = false;
+            extraEnv = {
+              RUSTC = "${msrvToolchain}/bin/rustc";
+              RUSTDOC = "${msrvToolchain}/bin/rustdoc";
+              RUSTFLAGS = "";
+              CARGO_ENCODED_RUSTFLAGS = "";
+              CARGO_TARGET_DIR = "target/msrv";
+            };
+          };
+          docs = harbor-rs.lib.mkDocsShell {
+            inherit pkgs craneLib cross;
+            extraEnv.RUSTDOCFLAGS = "-D warnings";
+          };
+        };
     })
     // {
       crossPackages."x86_64-linux"."aarch64-linux".detritus = self.packages."x86_64-linux"."detritus-aarch64-linux";

@@ -5,13 +5,20 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use detritus_server::{RetentionConfig, ServerConfig, load_security_config, serve};
 use tracing_subscriber::{EnvFilter, fmt};
 
 #[derive(Debug, Parser)]
-#[command(about = "Detritus ingestion server")]
+#[command(
+    version,
+    about = "Detritus ingestion server",
+    subcommand_negates_reqs = true,
+    args_conflicts_with_subcommands = true
+)]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
     /// Socket address to bind. Port 4317 is the OTLP/gRPC convention.
     #[arg(long, default_value = "127.0.0.1:4317")]
     bind: SocketAddr,
@@ -25,8 +32,8 @@ struct Cli {
     #[arg(long, default_value_t = 100 * 1024 * 1024)]
     max_dump_bytes: u64,
     /// TOML file containing Argon2-hashed bearer-token entries.
-    #[arg(long)]
-    tokens_config: PathBuf,
+    #[arg(long, required = true)]
+    tokens_config: Option<PathBuf>,
     /// NDJSON retention in days.
     #[arg(long, default_value_t = 14)]
     logs_ttl_days: u64,
@@ -38,6 +45,12 @@ struct Cli {
     janitor_interval_secs: u64,
 }
 
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Read a bearer token from stdin and print a randomly salted Argon2id PHC hash.
+    HashToken,
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum LogFormat {
     Json,
@@ -46,15 +59,35 @@ enum LogFormat {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let cli = Cli::parse();
+    if matches!(cli.command, Some(Command::HashToken)) {
+        use argon2::PasswordHasher;
+        let mut token = String::new();
+        std::io::stdin().read_line(&mut token)?;
+        let token = token.trim_end_matches(['\r', '\n']);
+        if token.is_empty() {
+            return Err("bearer token must not be empty".into());
+        }
+        // Argon2 0.6 generates an OS-random salt through PasswordHasher.
+        // https://docs.rs/argon2/0.6.0/argon2/#password-hashing
+        println!(
+            "{}",
+            argon2::Argon2::default().hash_password(token.as_bytes())?
+        );
+        return Ok(());
+    }
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("first and only CryptoProvider install, at startup before any TLS use");
 
-    let cli = Cli::parse();
     init_tracing(cli.log_format);
 
     let data_dir = absolute_path(&cli.data_dir)?;
-    let tokens_config = absolute_path(&cli.tokens_config)?;
+    let tokens_config = absolute_path(
+        cli.tokens_config
+            .as_deref()
+            .ok_or("--tokens-config is required")?,
+    )?;
     tracing::info!(path = %tokens_config.display(), "loading token config");
     let security = load_security_config(&tokens_config).await?;
     let config = ServerConfig {

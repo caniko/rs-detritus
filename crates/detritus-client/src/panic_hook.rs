@@ -119,6 +119,12 @@ fn install_minidumper_if_requested(config: &PanicHookConfig) -> Result<(), Panic
     let config = config.clone();
     let handle = minidumper_child::MinidumperChild::new()
         .with_crashes_dir(config.spool_dir.join("minidumper"))
+        // The reporter re-executes the application; preserve the arguments that
+        // select its configuration so it reaches this installation point again.
+        // https://docs.rs/minidumper-child/0.5.0/minidumper_child/struct.MinidumperChild.html#method.on_process
+        .on_process(|process| {
+            process.args(std::env::args_os().skip(1));
+        })
         .on_minidump(move |buffer, _path| {
             if let Err(error) = write_pending_minidump(&config, &buffer) {
                 // Crash-callback context: stderr only, never tracing (as in set_hook).

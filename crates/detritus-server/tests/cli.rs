@@ -55,12 +55,15 @@ async fn cli_serves_health_metrics_and_shuts_down_in_both_log_formats() {
         );
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(1))
+            .no_zstd()
             .build()
             .unwrap();
         let started = Instant::now();
         loop {
             if let Ok(response) = client.get(format!("http://{addr}/healthz")).send().await {
                 assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
+                uuid::Uuid::parse_str(response.headers()["x-request-id"].to_str().unwrap())
+                    .unwrap();
                 break;
             }
             assert!(
@@ -75,19 +78,29 @@ async fn cli_serves_health_metrics_and_shuts_down_in_both_log_formats() {
         }
         let response = client
             .get(format!("http://{addr}/metrics"))
+            .header("x-request-id", "diagnostic-123")
+            .header("accept-encoding", "zstd")
             .send()
             .await
             .unwrap();
         assert!(response.status().is_success());
+        assert_eq!(response.headers()["x-request-id"], "diagnostic-123");
         assert!(
             response.headers()["content-type"]
                 .to_str()
                 .unwrap()
                 .contains("openmetrics")
         );
-        assert!(response.text().await.unwrap().contains("detritus_"));
+        // Auto decoding is disabled to prove actual zstd response negotiation.
+        assert_eq!(response.headers()["content-encoding"], "zstd");
+        let bytes = response.bytes().await.unwrap();
+        let text = String::from_utf8(zstd::stream::decode_all(bytes.as_ref()).unwrap()).unwrap();
+        assert!(text.contains("detritus_"));
         let status = Command::new("kill")
-            .args(["-INT", &daemon.0.id().to_string()])
+            .args([
+                if format == "json" { "-INT" } else { "-TERM" },
+                &daemon.0.id().to_string(),
+            ])
             .status()
             .unwrap();
         assert!(status.success());
@@ -105,6 +118,55 @@ async fn cli_serves_health_metrics_and_shuts_down_in_both_log_formats() {
         }
         assert!(dir.path().join("data/logs").is_dir());
     }
+}
+
+#[test]
+fn cli_hashes_stdin_tokens_with_unique_salts_without_echoing_secrets() {
+    use argon2::{Argon2, PasswordHash, PasswordVerifier};
+    use std::io::Write;
+    let mut hashes = Vec::new();
+    for _ in 0..2 {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_detritusd"))
+            .arg("hash-token")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(b"  new-secret-token  \r\n")
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(output.stderr, Vec::<u8>::new());
+        let hash = String::from_utf8(output.stdout).unwrap();
+        assert!(!hash.contains("new-secret-token"));
+        let parsed = PasswordHash::new(hash.trim()).unwrap();
+        Argon2::default()
+            .verify_password(b"  new-secret-token  ", &parsed)
+            .unwrap();
+        assert!(
+            Argon2::default()
+                .verify_password(b"wrong", &parsed)
+                .is_err()
+        );
+        hashes.push(hash);
+    }
+    assert_ne!(hashes[0], hashes[1]);
+    let output = Command::new(env!("CARGO_BIN_EXE_detritusd"))
+        .arg("hash-token")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("empty"));
 }
 
 #[test]

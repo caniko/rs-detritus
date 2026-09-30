@@ -1,4 +1,4 @@
-# Workspace-wide checks complement the Simit-generated per-crate workflows.
+# Feature checks and downloadable reports complement the generated workspace gates.
 name: Coverage
 
 on:

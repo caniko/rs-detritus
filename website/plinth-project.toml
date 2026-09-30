@@ -1,6 +1,6 @@
 [site]
 title = "detritus"
-description = "<!-- simit:badges:start -->"
+description = "Lightweight crash and log ingestion for Rust applications."
 base_url = "/"
 footer_note = "Generated from repository metadata by the plinth-project FOSS sweep."
 
@@ -10,26 +10,26 @@ href = "#overview"
 
 [[nav]]
 label = "Source"
-href = "ssh://git@codeberg.org/caniko/rs-detritus.git"
+href = "https://github.com/caniko/rs-detritus"
 
 [[footer_links]]
 label = "Source"
-href = "ssh://git@codeberg.org/caniko/rs-detritus.git"
+href = "https://github.com/caniko/rs-detritus"
 
 [[pages]]
 slug = "index"
 title = "detritus"
-description = "<!-- simit:badges:start -->"
+description = "Lightweight crash and log ingestion for Rust applications."
 
 [[pages.sections]]
 type = "hero"
 title = "detritus"
-tagline = "<!-- simit:badges:start -->"
-subtitle = "<!-- simit:badges:start -->"
+tagline = "Crash and log ingestion for Rust applications"
+subtitle = "Collect OTLP logs and crash reports with a self-hosted receiver and an offline-capable Rust SDK."
 
 [[pages.sections.ctas]]
 label = "View source"
-href = "ssh://git@codeberg.org/caniko/rs-detritus.git"
+href = "https://github.com/caniko/rs-detritus"
 primary = true
 
 [[pages.sections]]

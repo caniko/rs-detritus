@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/detritus-client.svg)](https://crates.io/crates/detritus-client)
 [![Documentation](https://docs.rs/detritus-client/badge.svg)](https://docs.rs/detritus-client)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/caniko/rs-detritus/blob/trunk/LICENSE)
 
 `detritus-client` is the Rust SDK for sending tracing events and panic artifacts to a Detritus
 receiver.
@@ -105,10 +105,34 @@ Call `ship_pending_crashes` during process startup to upload crash entries and m
 uploads into `sent/`.
 Each spool directory uses a filesystem lock to avoid concurrent scans by two processes.
 
+## Transport options
+
+The log exporter reuses its HTTP/2 connection across batches and offline replay.
+HTTPS endpoints use system trust roots. Use `LayerBuilder::tls_config` with
+`ClientTlsConfig`, `Certificate`, and `Identity` (re-exported by `detritus`) for
+a private CA or mutual TLS.
+
+Use `.compression(CompressionEncoding::Gzip)` or
+`.compression(CompressionEncoding::Zstd)` on the layer builder to compress log
+messages. Requests are uncompressed by default; upgraded receivers accept both
+algorithms and negotiate compressed responses.
+
+`CrashShipper::new(token)` creates a reusable uploader with connect/read/total
+timeouts of 10/30/60 seconds. Its `ship_pending` and `ship_using_stored_config`
+methods share the connection pool across scans. `CrashShipper::with_client`
+accepts a Reqwest client configured with custom timeouts, TLS, or proxy settings.
+See [Offline Shipping](https://detritus.tartanoglu.com/docs/guides/offline-shipping.html)
+for examples.
+
+Native minidump reporters re-execute the application with its original arguments
+so command-line configuration is available in the reporter process too.
+
 ## Compatibility
 
-- Detritus protocol version: v0.1.0 / `PROTOCOL_VERSION == 1`.
-- Receiver compatibility: `detritus-server` v0.1.0.
+- Detritus protocol version: `PROTOCOL_VERSION == 1`.
+- Receiver compatibility: `detritus-server` 0.1 and 0.2 with default uncompressed logs;
+  opt-in log compression requires a 0.2 receiver.
+- Public OTLP types use Tonic/Prost 0.14; custom HTTP clients use Reqwest 0.13.
 - MSRV: Rust 1.88.
 - Edition: Rust 2024.
 
@@ -121,11 +145,11 @@ Each spool directory uses a filesystem lock to avoid concurrent scans by two pro
 ## Documentation
 
 - [API docs](https://docs.rs/detritus-client)
-- [Workspace](https://codeberg.org/caniko/rs-detritus)
-- [Documentation book](https://caniko.codeberg.page/rs-detritus/)
-- [Architecture](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/concepts/architecture.md)
-- [Operations](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/deployment/operations.md)
+- [Workspace](https://github.com/caniko/rs-detritus)
+- [Documentation book](https://detritus.tartanoglu.com/docs/)
+- [Architecture](https://github.com/caniko/rs-detritus/blob/trunk/docs/src/concepts/architecture.md)
+- [Operations](https://github.com/caniko/rs-detritus/blob/trunk/docs/src/deployment/operations.md)
 
 ## License
 
-Licensed under the [Apache License, Version 2.0](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/LICENSE).
+Licensed under the [Apache License, Version 2.0](https://github.com/caniko/rs-detritus/blob/trunk/LICENSE).

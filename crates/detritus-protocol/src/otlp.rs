@@ -93,7 +93,7 @@ mod generated {
 /// Common OTLP value and attribute types.
 pub mod common {
     pub use super::generated::opentelemetry::proto::common::v1::{
-        AnyValue, AnyValue as OtlpAnyValue, ArrayValue, InstrumentationScope, KeyValue,
+        AnyValue, AnyValue as OtlpAnyValue, ArrayValue, EntityRef, InstrumentationScope, KeyValue,
         KeyValueList, any_value,
     };
 }
@@ -106,7 +106,7 @@ pub mod resource {
 /// OTLP log record types exposed through a stable Detritus path.
 pub mod logs {
     pub use super::generated::opentelemetry::proto::collector::logs::v1::{
-        ExportLogsServiceRequest, ExportLogsServiceResponse,
+        ExportLogsPartialSuccess, ExportLogsServiceRequest, ExportLogsServiceResponse,
         logs_service_client::LogsServiceClient, logs_service_server::LogsService,
         logs_service_server::LogsServiceServer,
     };

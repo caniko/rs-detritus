@@ -139,6 +139,9 @@ async fn post_compressed_dump(addr: SocketAddr, compressed_dump: Vec<u8>) -> req
         .write_to_with_boundary_and_encodings(&mut body, DEFAULT_BOUNDARY, &encodings)
         .await
         .expect("multipart encodes");
+    // Whole-request compression is independent of each part's encoding. The
+    // receiver must decode only the envelope, preserving compressed blob hashes.
+    let body = zstd::encode_all(body.as_slice(), 1).expect("compress envelope");
     reqwest::Client::builder()
         .http2_prior_knowledge()
         .build()
@@ -149,6 +152,7 @@ async fn post_compressed_dump(addr: SocketAddr, compressed_dump: Vec<u8>) -> req
             format!("multipart/form-data; boundary={DEFAULT_BOUNDARY}"),
         )
         .header(AUTHORIZATION, "Bearer secret-token")
+        .header("content-encoding", "zstd")
         .body(body)
         .send()
         .await

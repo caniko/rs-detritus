@@ -9,11 +9,16 @@ use axum::{
 };
 use detritus_protocol::otlp::logs::LogsServiceServer;
 use tokio::net::TcpListener;
+use tonic::codec::CompressionEncoding;
 use tonic::service::Routes;
 use tower::ServiceBuilder;
 use tower_http::{
-    compression::CompressionLayer, decompression::RequestDecompressionLayer,
-    limit::RequestBodyLimitLayer, trace::TraceLayer,
+    compression::CompressionLayer,
+    decompression::RequestDecompressionLayer,
+    limit::RequestBodyLimitLayer,
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    sensitive_headers::SetSensitiveRequestHeadersLayer,
+    trace::TraceLayer,
 };
 
 use crate::{
@@ -71,7 +76,7 @@ pub(crate) struct AppState {
     pub(crate) schema_registry: SchemaRegistry,
 }
 
-/// Runs a Detritus server until the process receives Ctrl-C.
+/// Runs a Detritus server until the process receives Ctrl-C or, on Unix, SIGTERM.
 ///
 /// # Errors
 ///
@@ -163,12 +168,18 @@ fn app(
         metrics: metrics.clone(),
         schema_registry,
     };
-    let grpc = Routes::new(LogsServiceServer::new(LogsHandler::new(
-        writers,
-        state.rate_limiter.clone(),
-        state.metrics.clone(),
-        state.schema_registry.clone(),
-    )))
+    let grpc = Routes::new(
+        LogsServiceServer::new(LogsHandler::new(
+            writers,
+            state.rate_limiter.clone(),
+            state.metrics.clone(),
+            state.schema_registry.clone(),
+        ))
+        .accept_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Zstd)
+        .send_compressed(CompressionEncoding::Gzip)
+        .send_compressed(CompressionEncoding::Zstd),
+    )
     .into_axum_router();
     let http = Router::new()
         .route("/v1/crashes", post(crashes_handler))
@@ -184,9 +195,25 @@ fn app(
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
         .layer(
             ServiceBuilder::new()
-                .layer(TraceLayer::new_for_http())
-                .layer(RequestBodyLimitLayer::new(150 * 1024 * 1024))
+                .layer(SetSensitiveRequestHeadersLayer::new([
+                    header::AUTHORIZATION,
+                ]))
+                // Set before tracing, propagate after it so generated IDs appear
+                // in both spans and responses, including authentication failures.
+                // https://docs.rs/tower-http/0.7.1/tower_http/request_id/index.html
+                .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+                .layer(TraceLayer::new_for_http().make_span_with(
+                    |request: &axum::http::Request<axum::body::Body>| {
+                        tracing::info_span!("http_request",
+                            method = %request.method(), uri = %request.uri(),
+                            request_id = request.headers().get("x-request-id")
+                                .and_then(|value| value.to_str().ok()).unwrap_or("")
+                        )
+                    },
+                ))
+                .layer(PropagateRequestIdLayer::x_request_id())
                 .layer(RequestDecompressionLayer::new())
+                .layer(RequestBodyLimitLayer::new(150 * 1024 * 1024))
                 .layer(CompressionLayer::new()),
         )
 }
@@ -216,6 +243,23 @@ async fn render_metrics(
 }
 
 async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut terminate) => {
+                tokio::select! {
+                    result = tokio::signal::ctrl_c() => {
+                        if let Err(error) = result {
+                            tracing::error!(%error, "failed to install ctrl-c handler");
+                        }
+                    }
+                    _ = terminate.recv() => {}
+                }
+                return;
+            }
+            Err(error) => tracing::error!(%error, "failed to install SIGTERM handler"),
+        }
+    }
     if let Err(error) = tokio::signal::ctrl_c().await {
         tracing::error!(%error, "failed to install ctrl-c handler");
     }

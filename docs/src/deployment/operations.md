@@ -12,6 +12,17 @@ detritusd --tokens-config /etc/detritus/tokens.toml
 
 The token file uses Argon2 PHC hashes. The literal bearer token is distributed out-of-band and is not stored in the config.
 
+Generate a new hash by supplying one line on stdin:
+
+```sh
+detritusd hash-token < /run/secrets/receiver-token
+```
+
+The command prints a randomly salted Argon2id PHC string and needs no server
+configuration. It strips the line ending while preserving spaces in the token,
+rejects empty input, and does not print the secret. Hashes created with older
+Argon2 versions continue to authenticate.
+
 ```toml
 [[token]]
 id = "regicide-prod"
@@ -33,6 +44,16 @@ crashes_burst = 5
 ```
 
 Every request except `/healthz` and `/metrics` requires `Authorization: Bearer <token>`.
+
+## Request correlation and shutdown
+
+Every HTTP and gRPC response includes `x-request-id`. The server preserves a
+supplied ID or generates a UUID, and attaches it to the request's tracing span.
+Authorization headers are marked sensitive before request tracing.
+
+Ctrl-C and Unix SIGTERM both initiate graceful shutdown, stop the retention
+worker, and drain log writers before the process exits. `detritusd --version`
+prints the installed crate version.
 
 ## Request Limits
 

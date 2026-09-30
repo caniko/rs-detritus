@@ -8,7 +8,7 @@ use detritus_protocol::{
     CrashAttachment, CrashEnvelope, CrashMetadata,
     multipart::{EnvelopeEncodings, PartEncoding},
 };
-use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 use url::Url;
 
@@ -25,6 +25,90 @@ mod regression_tests;
 
 /// Default number of days to keep successfully sent crash entries.
 pub const DEFAULT_SENT_RETENTION_DAYS: u64 = 90;
+
+/// Reusable crash uploader with pooled HTTP connections and an in-memory token.
+///
+/// Convenience shipping functions create one uploader per scan. Keep this value
+/// to reuse its pool across scans, or supply a Reqwest client for private CAs,
+/// mutual TLS, proxy settings, and custom timeouts.
+#[derive(Debug, Clone)]
+pub struct CrashShipper {
+    client: reqwest::Client,
+    token: SecretString,
+    config: ShipConfig,
+}
+
+impl CrashShipper {
+    /// Creates an uploader with a 10-second connect timeout, 30-second read
+    /// timeout, and 60-second total request timeout.
+    ///
+    /// The offline spool owns retries; HTTP-level retries are disabled to avoid
+    /// recording a crash index more than once during one upload attempt.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ShipError::Http`] if the HTTP client cannot be initialized.
+    pub fn new(token: SecretString) -> Result<Self, ShipError> {
+        install_default_crypto_provider();
+        // https://docs.rs/reqwest/0.13.5/reqwest/struct.ClientBuilder.html
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .read_timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(60))
+            .retry(reqwest::retry::never())
+            .build()?;
+        Ok(Self::with_client(client, token))
+    }
+
+    /// Uses a caller-configured HTTP client. Its timeout and retry policy apply.
+    #[must_use]
+    pub fn with_client(client: reqwest::Client, token: SecretString) -> Self {
+        Self {
+            client,
+            token,
+            config: ShipConfig::default(),
+        }
+    }
+
+    /// Sets dump and attachment compression options.
+    #[must_use]
+    pub fn with_config(mut self, config: ShipConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    /// Ships pending entries to an explicit endpoint using this client's connection pool.
+    ///
+    /// # Errors
+    ///
+    /// See [`ship_pending_crashes_with_config`]. Failed entries remain pending.
+    pub async fn ship_pending(
+        &self,
+        spool_dir: impl AsRef<Path>,
+        endpoint: Url,
+    ) -> Result<usize, ShipError> {
+        ship_pending_with_client(
+            spool_dir.as_ref(),
+            &endpoint,
+            &self.token,
+            &self.config,
+            &self.client,
+        )
+        .await
+    }
+
+    /// Ships pending entries using their stored endpoints and retention policies.
+    ///
+    /// # Errors
+    ///
+    /// See [`ship_pending_crashes_using_stored_config_with_config`].
+    pub async fn ship_using_stored_config(
+        &self,
+        spool_dir: impl AsRef<Path>,
+    ) -> Result<usize, ShipError> {
+        ship_stored_with_client(spool_dir.as_ref(), &self.token, &self.config, &self.client).await
+    }
+}
 
 /// Configuration knobs for crash-dump upload compression.
 ///
@@ -79,6 +163,9 @@ pub enum ShipError {
     /// HTTP client failed.
     #[error("crash upload HTTP error: {0}")]
     Http(#[from] reqwest::Error),
+    /// Bearer token contains bytes that are not valid in an HTTP header.
+    #[error("crash upload bearer token is not a valid HTTP header value")]
+    InvalidToken,
     /// Server rejected the upload.
     #[error("crash upload failed with status {0}")]
     Status(reqwest::StatusCode),
@@ -118,7 +205,8 @@ pub async fn ship_pending_crashes(
 ///
 /// Returns [`ShipError::Io`] on spool filesystem errors, [`ShipError::Json`] if
 /// stored metadata cannot be parsed, [`ShipError::Protocol`] if multipart
-/// encoding fails, [`ShipError::Http`] if the upload request fails, or
+/// encoding fails, [`ShipError::InvalidToken`] for malformed bearer headers,
+/// [`ShipError::Http`] if the upload request fails, or
 /// [`ShipError::Status`] if the server rejects an upload.
 pub async fn ship_pending_crashes_with_config(
     spool_dir: impl AsRef<Path>,
@@ -126,7 +214,19 @@ pub async fn ship_pending_crashes_with_config(
     token: SecretString,
     config: ShipConfig,
 ) -> Result<usize, ShipError> {
-    let spool_dir = spool_dir.as_ref();
+    CrashShipper::new(token)?
+        .with_config(config)
+        .ship_pending(spool_dir, endpoint)
+        .await
+}
+
+async fn ship_pending_with_client(
+    spool_dir: &Path,
+    endpoint: &Url,
+    token: &SecretString,
+    config: &ShipConfig,
+    client: &reqwest::Client,
+) -> Result<usize, ShipError> {
     let _lock = SpoolLock::acquire(spool_dir)?;
     let pending = spool_dir.join("pending");
     let sent = spool_dir.join("sent");
@@ -136,7 +236,7 @@ pub async fn ship_pending_crashes_with_config(
 
     let mut shipped = 0;
     for entry in pending_entries(&pending)? {
-        ship_one(&entry, &sent, &endpoint, &token, &config).await?;
+        ship_one(&entry, &sent, endpoint, token, config, client).await?;
         shipped += 1;
     }
     Ok(shipped)
@@ -158,6 +258,7 @@ pub async fn ship_pending_crashes_with_config(
 /// stored metadata or stored upload config cannot be parsed,
 /// [`ShipError::MissingStoredConfig`] if a pending entry lacks a usable
 /// `sdk-config.json`, [`ShipError::Protocol`] if multipart encoding fails,
+/// [`ShipError::InvalidToken`] for malformed bearer headers,
 /// [`ShipError::Http`] if an upload request fails, or [`ShipError::Status`] if
 /// the server rejects an upload. The first error aborts the run.
 pub async fn ship_pending_crashes_using_stored_config(
@@ -190,7 +291,18 @@ pub async fn ship_pending_crashes_using_stored_config_with_config(
     token: SecretString,
     config: ShipConfig,
 ) -> Result<usize, ShipError> {
-    let spool_dir = spool_dir.as_ref();
+    CrashShipper::new(token)?
+        .with_config(config)
+        .ship_using_stored_config(spool_dir)
+        .await
+}
+
+async fn ship_stored_with_client(
+    spool_dir: &Path,
+    token: &SecretString,
+    config: &ShipConfig,
+    client: &reqwest::Client,
+) -> Result<usize, ShipError> {
     let _lock = SpoolLock::acquire(spool_dir)?;
     let pending = spool_dir.join("pending");
     let sent = spool_dir.join("sent");
@@ -201,7 +313,7 @@ pub async fn ship_pending_crashes_using_stored_config_with_config(
     let mut max_retention_days = None;
     for entry in pending_entries(&pending)? {
         let (endpoint, retention_days) = resolve_stored_endpoint(&entry)?;
-        ship_one(&entry, &sent, &endpoint, &token, &config).await?;
+        ship_one(&entry, &sent, &endpoint, token, config, client).await?;
         record_retention(&mut max_retention_days, retention_days);
         shipped += 1;
     }
@@ -229,9 +341,10 @@ async fn ship_one(
     endpoint: &Url,
     token: &SecretString,
     config: &ShipConfig,
+    client: &reqwest::Client,
 ) -> Result<(), ShipError> {
     let envelope = read_envelope(entry)?;
-    post_envelope(endpoint, token, &envelope, config).await?;
+    post_envelope(endpoint, token, &envelope, config, client).await?;
     let destination = sent.join(
         entry
             .file_name()
@@ -280,6 +393,7 @@ async fn post_envelope(
     token: &SecretString,
     envelope: &CrashEnvelope,
     config: &ShipConfig,
+    client: &reqwest::Client,
 ) -> Result<(), ShipError> {
     install_default_crypto_provider();
 
@@ -330,10 +444,12 @@ async fn post_envelope(
         .await?;
 
     let url = crash_url(endpoint);
-    let response = reqwest::Client::builder()
-        .build()?
+    let mut authorization = HeaderValue::from_str(&format!("Bearer {}", token.expose_secret()))
+        .map_err(|_| ShipError::InvalidToken)?;
+    authorization.set_sensitive(true);
+    let mut response = client
         .post(url)
-        .header(AUTHORIZATION, format!("Bearer {}", token.expose_secret()))
+        .header(AUTHORIZATION, authorization)
         .header(
             CONTENT_TYPE,
             format!(
@@ -345,6 +461,10 @@ async fn post_envelope(
         .send()
         .await?;
     if response.status().is_success() {
+        // HTTP/1 connections return to the pool only after the response body is
+        // consumed. Stream and discard it to keep memory bounded; the client's
+        // read and total timeouts also apply while draining.
+        while response.chunk().await?.is_some() {}
         Ok(())
     } else {
         Err(ShipError::Status(response.status()))

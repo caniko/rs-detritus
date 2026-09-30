@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/detritus-server.svg)](https://crates.io/crates/detritus-server)
 [![Documentation](https://docs.rs/detritus-server/badge.svg)](https://docs.rs/detritus-server)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/caniko/rs-detritus/blob/trunk/LICENSE)
 
 `detritus-server` is the Detritus telemetry and crash ingestion receiver.
 The package installs the `detritusd` binary for operators and exposes a small library surface for
@@ -62,7 +62,7 @@ cargo run --example embed_server -p detritus-server
 This crate currently has no optional Cargo features.
 The default package includes both the library and the `detritusd` binary.
 Compression, decompression, HTTP/2, Prometheus metrics, authentication, rate limiting, and retention
-janitor support are part of the v0.1.0 receiver.
+janitor support are part of the 0.2.0 receiver.
 
 ## Authentication
 
@@ -88,8 +88,10 @@ expectations.
 
 ## Compatibility
 
-- Detritus protocol version: v0.1.0 / `PROTOCOL_VERSION == 1`.
-- Client compatibility: `detritus-client` v0.1.0.
+- Detritus protocol version: `PROTOCOL_VERSION == 1`.
+- Client compatibility: `detritus-client` 0.1 and 0.2; gzip/zstd log compression
+  is available with the 0.2 client.
+- Existing Argon2 0.5 token hashes and persisted data remain supported.
 - MSRV: Rust 1.88.
 - Edition: Rust 2024.
 - Binary: `detritusd`.
@@ -103,12 +105,12 @@ expectations.
 ## Documentation
 
 - [API docs](https://docs.rs/detritus-server)
-- [Workspace](https://codeberg.org/caniko/rs-detritus)
-- [Documentation book](https://caniko.codeberg.page/rs-detritus/)
-- [Architecture](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/concepts/architecture.md)
-- [Operations](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/deployment/operations.md)
-- [Storage layout](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/docs/src/concepts/storage.md)
+- [Workspace](https://github.com/caniko/rs-detritus)
+- [Documentation book](https://detritus.tartanoglu.com/docs/)
+- [Architecture](https://github.com/caniko/rs-detritus/blob/trunk/docs/src/concepts/architecture.md)
+- [Operations](https://github.com/caniko/rs-detritus/blob/trunk/docs/src/deployment/operations.md)
+- [Storage layout](https://github.com/caniko/rs-detritus/blob/trunk/docs/src/concepts/storage.md)
 
 ## License
 
-Licensed under the [Apache License, Version 2.0](https://codeberg.org/caniko/rs-detritus/src/branch/trunk/LICENSE).
+Licensed under the [Apache License, Version 2.0](https://github.com/caniko/rs-detritus/blob/trunk/LICENSE).

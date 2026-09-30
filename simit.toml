@@ -1,12 +1,22 @@
 [ci]
 runner = "ubuntu-24.04"
-packages = ["detritus-client", "detritus-protocol", "detritus-server"]
 runtime = "nix"
 step_runners = { cargo-clippy = "ubuntu-24.04", cargo-doc = "ubuntu-24.04", cargo-fmt = "ubuntu-24.04", cargo-package = "ubuntu-24.04", cargo-test = "ubuntu-24.04", nix-check = "ubuntu-24.04", quality-tools = "ubuntu-24.04" }
 platform = "github"
 publish_crates = true
 provider = "actions"
-all_features = false
+extra_env = { CARGO_BUILD_JOBS = "4", RUSTDOCFLAGS = "-D warnings" }
+workspace = true
+workspace_strategy = "aggregate"
+with_msrv = true
+with_audit = true
+with_deny = true
+with_docs = true
+publish_strategy = "coordinated"
+required_secrets = ["CRATES_IO_API_TOKEN"]
+required_gates = [
+  { id = "coverage", run = "nix develop -c bash scripts/coverage.sh", timeout_minutes = 60, env = { CARGO_BUILD_JOBS = "4" } },
+]
 
 [ci.pages]
 repo = "caniko/rs-detritus"

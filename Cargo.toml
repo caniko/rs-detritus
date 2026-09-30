@@ -9,7 +9,7 @@ resolver = "3"
 [workspace.package]
 edition = "2024"
 license = "Apache-2.0"
-repository = "https://codeberg.org/caniko/rs-detritus"
+repository = "https://github.com/caniko/rs-detritus"
 rust-version = "1.88"
 authors = ["Can H. Tartanoglu <gpg@rotas.mozmail.com>"]
 

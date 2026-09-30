@@ -6,7 +6,7 @@ use std::{
 };
 
 use detritus::{
-    BuildInfo, PanicHookConfig, PanicKind, ShipError, SourceId, install_panic_hook,
+    BuildInfo, CrashShipper, PanicHookConfig, PanicKind, ShipError, SourceId, install_panic_hook,
     ship_pending_crashes_using_stored_config,
 };
 use detritus_server::{
@@ -60,13 +60,21 @@ async fn stored_config_shipper_recovers_endpoint_and_posts_to_server() {
     assert_eq!(pending.len(), 1);
     assert!(pending[0].join("sdk-config.json").exists());
 
-    let shipped =
-        ship_pending_crashes_using_stored_config(spool.path(), SecretString::from("secret-token"))
-            .await
-            .expect("ship using stored config");
+    let shipper = CrashShipper::new(SecretString::from("secret-token")).unwrap();
+    let shipped = shipper
+        .ship_using_stored_config(spool.path())
+        .await
+        .expect("ship using stored config");
     assert_eq!(shipped, 1);
     assert_eq!(entries(spool.path().join("pending")), Vec::<PathBuf>::new());
     assert_eq!(entries(spool.path().join("sent")).len(), 1);
+    assert_eq!(
+        shipper
+            .ship_using_stored_config(spool.path())
+            .await
+            .unwrap(),
+        0
+    );
 
     shutdown.send(()).expect("send shutdown");
     handle

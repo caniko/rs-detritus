@@ -433,6 +433,8 @@ dependencies = [
  "compression-core",
  "flate2",
  "memchr",
+ "zstd 0.14.0",
+ "zstd-safe 8.0.0",
 ]
 
 [[package]]
@@ -561,7 +563,7 @@ dependencies = [
 
 [[package]]
 name = "detritus-client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "detritus-protocol",
@@ -587,12 +589,12 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "zstd",
+ "zstd 0.14.0",
 ]
 
 [[package]]
 name = "detritus-protocol"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "chrono",
@@ -612,7 +614,7 @@ dependencies = [
 
 [[package]]
 name = "detritus-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "argon2",
  "axum",
@@ -643,7 +645,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
- "zstd",
+ "zstd 0.14.0",
 ]
 
 [[package]]
@@ -2288,6 +2290,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
 dependencies = [
  "aws-lc-rs",
+ "log",
  "once_cell",
  "rustls-pki-types",
  "rustls-webpki",
@@ -2896,6 +2899,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bytes",
+ "flate2",
  "h2",
  "http",
  "http-body",
@@ -2905,14 +2909,17 @@ dependencies = [
  "hyper-util",
  "percent-encoding",
  "pin-project",
+ "rustls-native-certs",
  "socket2",
  "sync_wrapper",
  "tokio",
+ "tokio-rustls",
  "tokio-stream",
  "tower",
  "tower-layer",
  "tower-service",
  "tracing",
+ "zstd 0.13.3",
 ]
 
 [[package]]
@@ -3016,6 +3023,7 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -3639,11 +3647,29 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[package]]
 name = "zstd"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
+dependencies = [
+ "zstd-safe 7.2.4",
+]
+
+[[package]]
+name = "zstd"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf06bd8162af0734b344780deb55b42a2429ae430870d13fcc12f238e880fe6e"
 dependencies = [
- "zstd-safe",
+ "zstd-safe 8.0.0",
+]
+
+[[package]]
+name = "zstd-safe"
+version = "7.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f49c4d5f0abb602a93fb8736af2a4f4dd9512e36f7f570d66e65ff867ed3b9d"
+dependencies = [
+ "zstd-sys",
 ]
 
 [[package]]

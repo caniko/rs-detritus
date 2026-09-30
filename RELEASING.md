@@ -1,109 +1,122 @@
 # Release procedure
 
-This document describes how to cut a new release of the detritus workspace.
-The workspace publishes three crates to crates.io in topological dependency
-order. Versions are synchronized across all three during v0.x.
+The workspace publishes `detritus-protocol`, `detritus-client`, and
+`detritus-server` to crates.io. Versions are synchronized across all three
+during v0.x. GitHub Actions owns publication through
+[Publish Workspace](.github/workflows/publish-workspace.yaml).
 
 ## Prerequisites
 
-- You have a crates.io account with `publish` ownership on all three crates.
-  To verify: `cargo owner --list detritus-protocol` (etc.).
-- `CRATES_IO_API_TOKEN` is configured as a Codeberg repo secret (one-time
-  setup; see `.forgejo/workflows/release.yml`).
-- You're on a clean checkout of `trunk` with CI green on the latest commit.
+- The crates.io account behind `CRATES_IO_API_TOKEN` owns all three crates.
+  Check ownership with `cargo owner --list <crate>`.
+- `CRATES_IO_API_TOKEN` is configured in the GitHub repository's Actions
+  secrets. Supply the existing credential through stdin or the secret manager;
+  never commit it or put it in a command-line argument.
+- The signing key matches `keys/maintainers.gpg`. Run
+  `simit release trust check` before creating a tag.
+- Use Simit 0.19.0 or newer with the versioned-dev-dependency ordering fix for
+  the aggregate CI and coordinated publisher configured in `simit.toml`.
+  `simit release plan --workspace` must order protocol → server → client because
+  the client's packaged dev-dependency requires the new server version.
+  Check generated workflows with
+  `simit init ci --platform github --check --diff`.
+- Start from a clean `trunk` checkout. CI and Coverage must pass on the exact
+  release commit before the tag is pushed.
 
-## Procedure
+## Prepare and validate
 
-1. **Bump versions.** Edit each `crates/*/Cargo.toml`'s `[package].version`.
-   Bump every PUBLISH crate to the new version simultaneously:
-
-   ```
-   detritus-protocol/Cargo.toml  → version = "X.Y.Z"
-   detritus-client/Cargo.toml    → version = "X.Y.Z"
-   detritus-server/Cargo.toml    → version = "X.Y.Z"
-   ```
-
-2. **Bump internal dep versions.** In each crate that depends on a sibling,
-   update the `version = "X.Y.Z"` qualifier on the path dep:
-
-   ```sh
-   grep -nE 'detritus-(protocol|client|server) = \{.*version' crates/*/Cargo.toml
-   ```
-
-   Each line shows the version. Bump together with step 1.
-
-3. **Move CHANGELOG entries.** In `CHANGELOG.md`, rename the
-   `## [Unreleased]` heading to `## [X.Y.Z] — YYYY-MM-DD`, then add a fresh
-   empty `## [Unreleased]` section above it.
-
-4. **Commit the bump.**
+1. Bump all three `crates/*/Cargo.toml` package versions and every versioned
+   sibling path dependency, including dev-dependencies. Refresh `Cargo.lock`.
+   Nix package and documentation versions are derived from the server manifest.
+2. Promote the changelog's unreleased entries into a dated release section and
+   add a fresh `Unreleased` section. Include migration notes for breaking public
+   dependency or API changes.
+3. Regenerate the workflows after changing versions or CI policy:
 
    ```sh
-   git add Cargo.toml crates/*/Cargo.toml CHANGELOG.md
-   git commit -m "release: vX.Y.Z"
+   simit init ci --platform github
+   simit init ci --platform github --check --diff
+   simit release trust check
    ```
 
-5. **Verify CI is green on this commit.** Push and wait for the `ci` workflow:
+4. Run the release gates in the pinned Nix environment:
+
+   ```sh
+   nix develop -c treefmt --ci
+   nix flake check --no-update-lock-file --keep-going --print-build-logs
+   nix develop -c cargo clippy --workspace --all-targets --all-features --locked -- --deny warnings
+   nix develop -c cargo test --workspace --all-features --locked -j 4
+   nix develop .#docs -c cargo doc --workspace --no-deps --all-features --locked
+   nix develop .#msrv -c cargo check --workspace --all-targets --all-features --locked
+   nix develop -c cargo audit
+   nix develop -c cargo deny check
+   nix develop -c bash scripts/coverage.sh
+   ```
+
+   The coverage gate requires at least 90% handwritten production-line coverage
+   independently for each crate. Also run the isolated no-default-feature tests
+   documented in [README.md](README.md).
+
+5. Inspect each `cargo package -p <crate> --list` result for the README, license,
+   source, examples, tests, and protocol build inputs. Use the pinned Cargo's
+   workspace packaging to verify unpublished sibling archives through its
+   temporary registry:
+
+   ```sh
+   nix develop -c cargo package --workspace --all-features --allow-dirty --locked
+   nix develop -c cargo publish --workspace --all-features --dry-run --allow-dirty --locked
+   ```
+
+   Individual registry dry-runs for a dependent require its new sibling
+   versions to be available. The publisher repeats those checks immediately
+   before uploading each crate in dependency order.
+
+6. Commit and push the preparation to `trunk`, then wait for GitHub CI and
+   Coverage to pass on that commit:
 
    ```sh
    git push origin trunk
-   # Watch CI at codeberg.org/caniko/rs-detritus/actions
+   gh run list --repo caniko/rs-detritus
+   gh run watch <run-id> --repo caniko/rs-detritus --exit-status
    ```
 
-6. **Tag and push.**
+## Tag and publish
 
-   ```sh
-   git tag vX.Y.Z
-   git push origin vX.Y.Z
-   ```
+Use a signed, annotated **bare semver** tag. The workflow accepts `0.2.0`,
+not `v0.2.0`.
 
-   The `release.yml` workflow triggers automatically. It runs `cargo publish`
-   for each crate in topological order (protocol → server → client) using the
-   `CRATES_IO_API_TOKEN` secret.
+```sh
+git tag -s X.Y.Z -m "Release X.Y.Z" -m "Validated workspace tests, coverage, MSRV, docs, dependency policy, and package contents."
+git verify-tag X.Y.Z
+git push origin X.Y.Z
+```
 
-7. **Verify the publish.** After ~5 minutes:
+The coordinated publisher validates the tag against the pinned maintainer key
+and checks lockstep Cargo versions. Required gates run before uploads, each
+crate is packaged and dry-run checked, and dependent jobs wait for their
+prerequisites to appear on crates.io. Publishing runs are serialized and are
+never cancelled halfway through an upload.
 
-   ```sh
-   for c in detritus-protocol detritus-server detritus-client; do
-     curl -sf "https://crates.io/api/v1/crates/${c}" \
-       | jq -r '.crate.max_version'
-   done
-   ```
+Watch [GitHub Actions](https://github.com/caniko/rs-detritus/actions) until every
+publish job succeeds. Verify each exact version on crates.io and then docs.rs:
 
-   Each prints `X.Y.Z`. docs.rs builds run automatically and complete within
-   ~30 minutes (verify at `https://docs.rs/<crate>/X.Y.Z`).
+```sh
+for crate in detritus-protocol detritus-server detritus-client; do
+  curl -fsS "https://crates.io/api/v1/crates/$crate/X.Y.Z" \
+    | jq -r '.version | [.crate, .num, .yanked] | @tsv'
+done
+```
 
-## If something goes wrong
+Documentation builds are asynchronous. Check
+`https://docs.rs/<crate>/X.Y.Z` and its build status before reporting the
+documentation release as complete.
 
-- **Wrong version published.** `cargo yank --version X.Y.Z -p <crate>`. Yanked
-  versions remain downloadable but won't satisfy new resolves. Then publish a
-  corrected `X.Y.Z+1`.
-- **Wrong crate name.** Cannot rename a crate after publishing. Yank, publish
-  under the new name, update consumers.
-- **Lost the token.** Revoke at crates.io/settings, generate a new one, update
-  the Codeberg secret.
+## Recovery
 
-## First release (v0.1.0) special steps
-
-1. **Verify each crate name is free** before tagging:
-
-   ```sh
-   for c in detritus-protocol detritus-server detritus-client; do
-     status=$(curl -sf -o /dev/null -w "%{http_code}" \
-       "https://crates.io/api/v1/crates/${c}" -A "detritus-publish-check/1.0")
-     echo "$c → HTTP $status"   # 404 = free, 200 = taken
-   done
-   ```
-
-   As of 2026-05-19, all three names returned HTTP 404 (free).
-
-2. **Add co-owners** after first publish:
-
-   ```sh
-   for c in detritus-protocol detritus-server detritus-client; do
-     cargo owner --add <username> "$c"
-   done
-   ```
-
-3. **Verify docs.rs** built the doc set (the first build may take longer due
-   to no cache).
+- Fix a workflow or transient failure, then rerun the failed jobs or dispatch
+  `publish-workspace.yaml` at the same signed tag. Already-published versions
+  are accepted only when their archive checksums match the intended release.
+- Never move an existing published tag. If shipped code is wrong, prepare a new
+  version; yank a broken version only after considering consumers.
+- If the token is revoked or expired, rotate the GitHub Actions secret from its
+  authoritative credential source and rerun the failed publication.

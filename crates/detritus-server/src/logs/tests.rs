@@ -177,7 +177,19 @@ async fn writer_shutdown_drains_all_records_and_reuses_source_channel() {
 async fn utf8_schema_errors_are_bounded_without_panicking_or_writing_records() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("schema.json");
-    tokio::fs::write(&path, serde_json::to_vec(&json!({"properties": {"resource": {"properties": {"source.version": {"enum": ["allowed"]}}}}})).unwrap()).await.unwrap();
+    // Payload values are masked now. A long Unicode *schema property path*
+    // still exercises UTF-8-safe truncation without relying on leaked values.
+    let long_key = "☃".repeat(2000);
+    tokio::fs::write(
+        &path,
+        serde_json::to_vec(&json!({"properties": {"resource": {"properties": {
+            "source.version": {"enum": ["allowed"]},
+            (long_key.clone()): {"enum": ["allowed"]}
+        }}}}))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
     let registry = SchemaRegistry::load(&[crate::schemas::ProjectSchemaEntry {
         project: "tests".into(),
         kind: SchemaKind::LogAttributes,
@@ -207,6 +219,10 @@ async fn utf8_schema_errors_are_bounded_without_panicking_or_writing_records() {
         "source.version",
         any_value::Value::StringValue("☃".repeat(2000)),
     );
+    resource.resource.as_mut().unwrap().attributes.push(attr(
+        &long_key,
+        any_value::Value::StringValue("private-diagnostic-value".into()),
+    ));
     let mut request = Request::new(ExportLogsServiceRequest {
         resource_logs: vec![resource],
     });
@@ -219,6 +235,7 @@ async fn utf8_schema_errors_are_bounded_without_panicking_or_writing_records() {
     assert_eq!(error.code(), tonic::Code::InvalidArgument);
     assert!(error.message().len() <= 1024);
     assert!(error.message().ends_with('…'));
+    assert!(!error.message().contains("private-diagnostic-value"));
     assert!(
         !storage
             .log_file(

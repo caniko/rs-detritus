@@ -6,10 +6,30 @@ Detritus uses two distinct compression layers for crash ingest.
 
 Transport compression is handled by the HTTP and gRPC stack.
 
-- OTLP/gRPC log export uses transport gzip.
-- Crash uploads flow through the server's request decompression and response compression layers.
+- OTLP/gRPC accepts uncompressed, gzip, and zstd messages. The client sends
+  uncompressed requests by default; select an algorithm with
+  `LayerBuilder::compression`. Response compression is negotiated with Tonic.
+- Crash uploads accept whole-request gzip and zstd compression, independently of
+  multipart part encodings. HTTP responses negotiate gzip or zstd using
+  `Accept-Encoding`.
+- The 150 MiB HTTP request-body limit is applied after decompression.
 
-This layer is transparent to application code.
+For example, add `.compression(detritus::CompressionEncoding::Zstd)` to a log
+layer builder when using an upgraded receiver. A failed compressed export is
+spooled as the original protobuf request, so replay remains independent of the
+transport encoding selected by the next process.
+
+The log exporter reuses a Tonic channel across requests and applies the flush
+timeout to both connection establishment and each RPC, including the gRPC
+deadline sent to the receiver. HTTPS uses system trust roots; a
+`detritus::ClientTlsConfig` supplied to `LayerBuilder::tls_config` supports private
+CAs, domain overrides, and client identities for mutual TLS. TLS termination
+remains at the reverse proxy in the standard receiver deployment.
+
+These integrations use the documented
+[Tonic compression API](https://docs.rs/tonic/0.14.6/tonic/codec/enum.CompressionEncoding.html),
+[Tonic TLS configuration](https://docs.rs/tonic/0.14.6/tonic/transport/struct.ClientTlsConfig.html),
+and [tower-http decompression](https://docs.rs/tower-http/0.7.1/tower_http/decompression/index.html).
 
 ## Layer 2: Payload Compression
 

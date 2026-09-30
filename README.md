@@ -2,7 +2,7 @@
 
 <!-- simit:badges:start -->
 
-![CI](https://img.shields.io/badge/CI-managed-2088ff) [![Nix](https://img.shields.io/badge/Nix-managed-5277c3)](flake.nix) [![docs](https://img.shields.io/badge/docs-enabled-6f42c1)](docs) [![crates.io](https://img.shields.io/badge/crates.io-ready-f46623)](https://crates.io/crates/detritus-client)
+[![CI](https://img.shields.io/badge/CI-managed+extra-2088ff)](.github/workflows/ci.yaml) [![Nix](https://img.shields.io/badge/Nix-drift-5277c3)](flake.nix) [![docs](https://img.shields.io/badge/docs-enabled-6f42c1)](docs) [![crates.io](https://img.shields.io/badge/crates.io-ready-f46623)](https://crates.io/crates/detritus-client)
 
 <!-- simit:badges:end -->
 
@@ -21,16 +21,21 @@ The v1 receiver exposes two ingestion endpoints:
 
 ## Documentation
 
-- [Documentation book](https://caniko.codeberg.page/rs-detritus/)
+- [Documentation book](https://detritus.tartanoglu.com/docs/)
 - [Architecture](docs/src/concepts/architecture.md)
 - [Operations](docs/src/deployment/operations.md)
 - [Storage layout](docs/src/concepts/storage.md)
 
 ## CI
 
-- [CI status](https://codeberg.org/caniko/rs-detritus/actions/workflows/ci.yml)
-- On every push to `trunk` and every PR, CI runs fmt, clippy, check, test, doc, an MSRV check, `cargo-audit`, `cargo-deny`, and a `cargo publish --dry-run` for `detritus-protocol`.
-- On every tag `vX.Y.Z`, the release workflow runs the real `cargo publish` to crates.io using the `CRATES_IO_API_TOKEN` repo secret.
+- [CI status](https://github.com/caniko/rs-detritus/actions/workflows/ci.yaml)
+- On every branch push and PR, aggregate CI checks formatting, the Nix flake,
+  all-feature and no-default-feature tests/Clippy, warning-free docs, Rust 1.88
+  compatibility, dependency policy, and per-crate coverage. The dedicated
+  Coverage workflow also checks isolated features and uploads HTML/JSON reports.
+- Signed tags `X.Y.Z` trigger dependency-ordered publication to crates.io using
+  the `CRATES_IO_API_TOKEN` GitHub Actions secret. Each archive is verified and
+  dry-run checked before upload.
 - Release procedure: [RELEASING.md](RELEASING.md)
 
 ## Testing and coverage

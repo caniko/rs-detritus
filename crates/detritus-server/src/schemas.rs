@@ -1,6 +1,6 @@
 //! Per-tenant schema registry for crash and log payload validation.
 //!
-//! [`SchemaRegistry`] holds a compiled (or, in this phase, a no-op marker)
+//! [`SchemaRegistry`] holds a compiled
 //! schema for every `(project, SchemaKind)` pair that was declared in the
 //! tokens configuration file.  It is populated once at startup via
 //! [`SchemaRegistry::load`] and then held inside [`crate::server::AppState`]
@@ -19,6 +19,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 pub(crate) use detritus_protocol::schema::SchemaError;
 pub use detritus_protocol::schema::SchemaKind;
 use jsonschema::Validator;
+use serde::Deserialize;
 use tokio::fs;
 
 #[cfg(test)]
@@ -37,6 +38,27 @@ pub struct ProjectSchemaEntry {
     pub kind: SchemaKind,
     /// Absolute (already-resolved) path to the JSON Schema document on disk.
     pub path: PathBuf,
+}
+
+/// A locally supplied document available to JSON Schema `$ref` resolution.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SchemaResourceEntry {
+    /// Absolute URI used in `$ref`, for example `urn:detritus:common`.
+    pub uri: String,
+    /// Path to the JSON document, resolved by the caller before loading.
+    pub path: PathBuf,
+}
+
+/// Optional validation policy and offline resources shared by tenant schemas.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct SchemaOptions {
+    /// Override draft-dependent format checking; `None` preserves draft defaults.
+    pub validate_formats: Option<bool>,
+    /// Override whether unrecognized format names are ignored at compilation.
+    pub ignore_unknown_formats: Option<bool>,
+    /// Local documents registered by URI without network or implicit file fetching.
+    pub resources: Vec<SchemaResourceEntry>,
 }
 
 /// A compiled JSON Schema validator behind an `Arc` so registry clones
@@ -81,23 +103,57 @@ impl SchemaRegistry {
     /// [`SchemaError::Parse`] if the file content is not valid JSON or fails
     /// to compile as a JSON Schema.
     pub async fn load(entries: &[ProjectSchemaEntry]) -> Result<Self, SchemaError> {
+        Self::load_with_options(entries, &SchemaOptions::default()).await
+    }
+
+    /// Loads tenant schemas with explicit format policy and shared offline `$ref` resources.
+    ///
+    /// Resource paths must already be resolved relative to the configuration file.
+    /// All documents are prepared once and validators reuse the same reference registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaError::Io`] on unreadable files or [`SchemaError::Parse`]
+    /// on malformed documents, duplicate resource URIs, or compilation failures.
+    pub async fn load_with_options(
+        entries: &[ProjectSchemaEntry],
+        options: &SchemaOptions,
+    ) -> Result<Self, SchemaError> {
+        // https://docs.rs/jsonschema/0.58.3/jsonschema/struct.Registry.html
+        let mut resources = jsonschema::Registry::new();
+        let mut uris = std::collections::HashSet::new();
+        for resource in &options.resources {
+            if !uris.insert(&resource.uri) {
+                return Err(schema_parse_error(
+                    &resource.path,
+                    "duplicate schema resource URI",
+                ));
+            }
+            let value = read_schema(&resource.path).await?;
+            resources = resources
+                .add(&resource.uri, value)
+                .map_err(|err| schema_parse_error(&resource.path, err))?;
+        }
+        let resource_path = options.resources.first().map_or_else(
+            || PathBuf::from("<schema resources>"),
+            |resource| resource.path.clone(),
+        );
+        let resources = resources
+            .prepare()
+            .map_err(|err| schema_parse_error(&resource_path, err))?;
         let mut schemas = HashMap::with_capacity(entries.len());
         for entry in entries {
-            let raw = fs::read_to_string(&entry.path)
-                .await
-                .map_err(|source| SchemaError::Io {
-                    path: entry.path.clone(),
-                    source,
-                })?;
-            let value: serde_json::Value =
-                serde_json::from_str(&raw).map_err(|source| SchemaError::Parse {
-                    path: entry.path.clone(),
-                    source,
-                })?;
-            let validator = Validator::new(&value).map_err(|err| SchemaError::Parse {
-                path: entry.path.clone(),
-                source: serde::de::Error::custom(err.to_string()),
-            })?;
+            let value = read_schema(&entry.path).await?;
+            let mut validation = jsonschema::options().with_registry(&resources);
+            if let Some(enabled) = options.validate_formats {
+                validation = validation.should_validate_formats(enabled);
+            }
+            if let Some(ignore) = options.ignore_unknown_formats {
+                validation = validation.should_ignore_unknown_formats(ignore);
+            }
+            let validator = validation
+                .build(&value)
+                .map_err(|err| schema_parse_error(&entry.path, err))?;
             schemas.insert(
                 (entry.project.clone(), entry.kind),
                 CompiledSchema(Arc::new(validator)),
@@ -127,13 +183,40 @@ impl SchemaRegistry {
         let errors: Vec<String> = compiled
             .0
             .iter_errors(payload)
-            .map(|e| e.to_string())
+            .map(|e| {
+                format!(
+                    "{}: {} [schema {}]",
+                    e.instance_path(),
+                    e.masked(),
+                    e.schema_path()
+                )
+            })
             .collect();
         if errors.is_empty() {
             Ok(())
         } else {
             Err(SchemaError::Validation { kind, errors })
         }
+    }
+}
+
+async fn read_schema(path: &std::path::Path) -> Result<serde_json::Value, SchemaError> {
+    let raw = fs::read_to_string(path)
+        .await
+        .map_err(|source| SchemaError::Io {
+            path: path.to_owned(),
+            source,
+        })?;
+    serde_json::from_str(&raw).map_err(|source| SchemaError::Parse {
+        path: path.to_owned(),
+        source,
+    })
+}
+
+fn schema_parse_error(path: &std::path::Path, error: impl std::fmt::Display) -> SchemaError {
+    SchemaError::Parse {
+        path: path.to_owned(),
+        source: serde::de::Error::custom(error.to_string()),
     }
 }
 
