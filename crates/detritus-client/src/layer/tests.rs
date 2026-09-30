@@ -65,8 +65,10 @@ async fn flush_timeout_preserves_records_for_replay() {
         .parse()
         .unwrap();
     let handle = tokio::spawn(worker.run());
-    // Consume the initial empty interval tick before enqueueing the batch.
-    layer.flush().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), layer.flush())
+        .await
+        .unwrap()
+        .unwrap();
     layer
         .sender
         .send(WorkerMessage::Record(LogRecord {
@@ -75,7 +77,11 @@ async fn flush_timeout_preserves_records_for_replay() {
         }))
         .await
         .unwrap();
-    assert!(matches!(layer.flush().await, Err(LayerError::Flush(_))));
+    let result = tokio::time::timeout(Duration::from_secs(2), layer.flush())
+        .await
+        .expect("flush must complete even if the interval exports first");
+    // The interval can flush the batch before the explicit request arrives.
+    assert!(matches!(result, Ok(()) | Err(LayerError::Flush(_))));
     let paths = spool::pending_log_batches(dir.path()).unwrap();
     assert_eq!(
         paths.len(),
@@ -92,6 +98,81 @@ async fn flush_timeout_preserves_records_for_replay() {
         .await
         .unwrap()
         .unwrap();
+}
+
+#[tokio::test]
+async fn stalled_background_exports_preserve_batches_and_allow_shutdown() {
+    for mode in ["batch", "periodic", "shutdown"] {
+        let dir = TempDir::new().unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (layer, mut worker) = worker(dir.path());
+        worker.endpoint = format!("http://{}", listener.local_addr().unwrap())
+            .parse()
+            .unwrap();
+        if mode == "batch" {
+            worker.batch_size = 1;
+        } else if mode == "periodic" {
+            worker.flush_interval = Duration::from_millis(20);
+        }
+        let handle = tokio::spawn(worker.run());
+        layer
+            .sender
+            .send(WorkerMessage::Record(LogRecord {
+                time_unix_nano: 88,
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
+        if mode != "shutdown" {
+            tokio::time::timeout(Duration::from_secs(2), async {
+                loop {
+                    if !spool::pending_log_batches(dir.path()).unwrap().is_empty() {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .expect("background export must time out and spool");
+        }
+        drop(layer);
+        tokio::time::timeout(Duration::from_secs(2), handle)
+            .await
+            .expect("shutdown export must time out")
+            .unwrap();
+        let paths = spool::pending_log_batches(dir.path()).unwrap();
+        assert_eq!(paths.len(), 1, "{mode} must preserve exactly one batch");
+        assert_eq!(
+            spool::read_log_batch(&paths[0]).unwrap().resource_logs[0].scope_logs[0].log_records[0]
+                .time_unix_nano,
+            88
+        );
+    }
+}
+
+#[tokio::test]
+async fn stalled_replay_preserves_pending_batch_and_releases_lock() {
+    let dir = TempDir::new().unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let (_, mut worker) = worker(dir.path());
+    worker.endpoint = format!("http://{}", listener.local_addr().unwrap())
+        .parse()
+        .unwrap();
+    let request = export_request_for(
+        &source(),
+        vec![LogRecord {
+            time_unix_nano: 99,
+            ..Default::default()
+        }],
+    );
+    spool::write_log_batch(dir.path(), &request).unwrap();
+    tokio::time::timeout(Duration::from_secs(2), worker.drain_spooled())
+        .await
+        .expect("replay must time out");
+    let paths = spool::pending_log_batches(dir.path()).unwrap();
+    assert_eq!(paths.len(), 1);
+    assert_eq!(spool::read_log_batch(&paths[0]).unwrap(), request);
+    assert!(spool::SpoolLock::acquire(dir.path()).is_ok());
 }
 
 #[test]

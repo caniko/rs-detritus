@@ -52,7 +52,8 @@ impl Layer {
     ///
     /// Returns [`LayerError::WorkerStopped`] if the background exporter has
     /// stopped, or [`LayerError::Flush`] if the flush could not complete (for
-    /// example it timed out or the export failed and could not be spooled).
+    /// example it timed out or the export failed). Failed batches are spooled
+    /// for replay when the queue directory is writable.
     pub async fn flush(&self) -> Result<(), LayerError> {
         let (sender, receiver) = oneshot::channel();
         self.sender
@@ -127,7 +128,7 @@ impl LayerBuilder {
         self
     }
 
-    /// Sets the maximum time a requested flush waits for network export.
+    /// Sets the timeout for each export or replay attempt, including requested flushes.
     #[must_use]
     pub fn flush_timeout(mut self, flush_timeout: Duration) -> Self {
         self.flush_timeout = flush_timeout;
@@ -202,7 +203,7 @@ pub enum LayerError {
     /// Background worker has stopped.
     #[error("observability layer worker stopped")]
     WorkerStopped,
-    /// Export failed and the batch could not be spooled.
+    /// A requested flush failed; its batch may have been spooled for replay.
     #[error("observability layer flush failed: {0}")]
     Flush(String),
 }
@@ -259,20 +260,7 @@ impl Worker {
                             }
                         }
                         WorkerMessage::Flush(reply) => {
-                            let records = std::mem::take(&mut batch);
-                            let result = tokio::time::timeout(
-                                self.flush_timeout,
-                                self.export_records(records.clone()),
-                            )
-                            .await
-                            .unwrap_or_else(|_| {
-                                spool::write_log_batch(
-                                    &self.queue_dir,
-                                    &export_request_for(&self.source, records),
-                                )
-                                .map_err(|io| LayerError::Flush(io.to_string()))?;
-                                Err(LayerError::Flush("flush timed out".to_owned()))
-                            });
+                            let result = self.export_records(std::mem::take(&mut batch)).await;
                             let _ = reply.send(result);
                         }
                     }
@@ -306,10 +294,14 @@ impl Worker {
             let Ok(request) = spool::read_log_batch(&path) else {
                 continue;
             };
-            if export_request(&self.endpoint, &self.token, request)
-                .await
-                .is_ok()
-            {
+            if matches!(
+                tokio::time::timeout(
+                    self.flush_timeout,
+                    export_request(&self.endpoint, &self.token, request),
+                )
+                .await,
+                Ok(Ok(()))
+            ) {
                 let _ = std::fs::remove_file(path);
             }
         }
@@ -329,14 +321,19 @@ impl Worker {
             return Ok(());
         }
         let request = export_request_for(&self.source, records);
-        match export_request(&self.endpoint, &self.token, request.clone()).await {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                spool::write_log_batch(&self.queue_dir, &request)
-                    .map_err(|io| LayerError::Flush(io.to_string()))?;
-                Err(LayerError::Flush(error.to_string()))
-            }
-        }
+        let error = match tokio::time::timeout(
+            self.flush_timeout,
+            export_request(&self.endpoint, &self.token, request.clone()),
+        )
+        .await
+        {
+            Ok(Ok(())) => return Ok(()),
+            Ok(Err(error)) => error.to_string(),
+            Err(_) => "flush timed out".to_owned(),
+        };
+        spool::write_log_batch(&self.queue_dir, &request)
+            .map_err(|io| LayerError::Flush(io.to_string()))?;
+        Err(LayerError::Flush(error))
     }
 }
 
