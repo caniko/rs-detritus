@@ -9,6 +9,9 @@ use uuid::Uuid;
 
 use detritus_protocol::otlp::logs::ExportLogsServiceRequest;
 
+#[cfg(test)]
+mod tests;
+
 pub(crate) fn ensure_dir(path: &Path) -> io::Result<()> {
     fs::create_dir_all(path)
 }

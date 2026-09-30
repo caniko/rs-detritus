@@ -25,6 +25,9 @@ use url::Url;
 
 use crate::spool;
 
+#[cfg(test)]
+mod tests;
+
 const DEFAULT_BATCH_SIZE: usize = 256;
 const DEFAULT_FLUSH_INTERVAL: Duration = Duration::from_secs(5);
 const DEFAULT_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
@@ -241,7 +244,11 @@ impl Worker {
 
         loop {
             tokio::select! {
-                Some(message) = self.receiver.recv() => {
+                message = self.receiver.recv() => {
+                    let Some(message) = message else {
+                        self.export_or_spool(batch).await;
+                        break;
+                    };
                     match message {
                         WorkerMessage::Record(record) => {
                             if self.should_sample(&record) {
@@ -255,20 +262,23 @@ impl Worker {
                             let records = std::mem::take(&mut batch);
                             let result = tokio::time::timeout(
                                 self.flush_timeout,
-                                self.export_records(records),
+                                self.export_records(records.clone()),
                             )
                             .await
-                            .unwrap_or_else(|_| Err(LayerError::Flush("flush timed out".to_owned())));
+                            .unwrap_or_else(|_| {
+                                spool::write_log_batch(
+                                    &self.queue_dir,
+                                    &export_request_for(&self.source, records),
+                                )
+                                .map_err(|io| LayerError::Flush(io.to_string()))?;
+                                Err(LayerError::Flush("flush timed out".to_owned()))
+                            });
                             let _ = reply.send(result);
                         }
                     }
                 }
                 _ = interval.tick() => {
                     self.export_or_spool(std::mem::take(&mut batch)).await;
-                }
-                else => {
-                    self.export_or_spool(batch).await;
-                    break;
                 }
             }
         }

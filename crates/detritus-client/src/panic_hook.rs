@@ -16,6 +16,9 @@ use serde_json::json;
 use url::Url;
 use uuid::Uuid;
 
+#[cfg(test)]
+mod tests;
+
 #[cfg(all(feature = "minidump", not(target_os = "android")))]
 static MINIDUMPER_HANDLES: std::sync::OnceLock<
     parking_lot::Mutex<Vec<minidumper_child::ClientHandle>>,
