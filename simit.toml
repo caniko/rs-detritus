@@ -21,3 +21,17 @@ required_gates = [
 [ci.pages]
 repo = "caniko/rs-detritus"
 canonical_domain = "detritus.tartanoglu.com"
+
+[release.github]
+repo = "caniko/rs-detritus"
+target_branch = "trunk"
+
+# Prebuilt `detritusd` archives for `cargo binstall detritus-server`, built per
+# release system from the flake's `mkBinstallRelease` bundle. No minisign
+# trust root is committed here, so the checksums stay unsigned.
+[release.artifacts]
+runner = "ubuntu-24.04"
+prebuild_binaries = true
+binstall = true
+sign = false
+system_runners = { x86_64-linux = "ubuntu-24.04", aarch64-darwin = "macos-15" }

@@ -22,7 +22,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     harbor-rs = {
-      url = "git+https://github.com/caniko/harbor-rs.git?ref=trunk&rev=c4ffa5d9b9232eae1f6693dfbcbcdd2548f31592";
+      url = "git+https://github.com/caniko/harbor-rs.git?ref=trunk&rev=0d53ee174d64cdebf22666691a7e8a99b2eb8cc6";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.rust-overlay.follows = "rust-overlay";
       inputs.crane.follows = "crane";
@@ -122,6 +122,24 @@
           };
         });
 
+      # Prebuilt archives for `cargo binstall detritus-server`: every target
+      # below is packed as <pname>-<version>-<rustTarget> and published with
+      # the GitHub release of that version.
+      release = harbor-rs.lib.mkBinstallRelease {
+        inherit pkgs system;
+        pname = "detritus";
+        inherit version commonArgs cross;
+        crates.detritus-server = {
+          cargoToml = ./crates/detritus-server/Cargo.toml;
+        };
+        # aws-lc-sys (Rustls' crypto provider) does not build for
+        # x86_64-pc-windows-gnu under MinGW, so no Windows archive.
+        targets = {
+          x86_64-linux = ["x86_64-linux-musl" "aarch64-linux-musl"];
+          aarch64-darwin = ["native"];
+        };
+      };
+
       docs = pkgs.stdenv.mkDerivation {
         pname = "detritus-docs";
         inherit version;
@@ -153,6 +171,9 @@
           inherit detritus docs website;
           site = website;
         }
+        // lib.optionalAttrs (release.releaseBundle != null) {
+          release-bundle = release.releaseBundle;
+        }
         // lib.optionalAttrs (system == "x86_64-linux") {
           "detritus-aarch64-linux" = crossPackageSet."detritus-aarch64-linux";
         };
@@ -161,37 +182,39 @@
         domain = "detritus.tartanoglu.com";
       };
 
-      checks = {
-        default = detritus;
-        inherit detritus;
-        formatting = treefmtEval.config.build.check self;
-        fmt = craneLib.cargoFmt {
-          inherit src version;
-          pname = "detritus";
-        };
-        clippy = craneLib.cargoClippy (commonArgs
-          // {
-            inherit cargoArtifacts;
-            cargoClippyExtraArgs = "--all-targets -- --deny warnings";
-          });
-        # Fail if flake inputs ever point at the retired Codeberg/Codefloe
-        # mirrors again (fleet migrated to github.com/caniko/*).
-        # sourceUrl package metadata is excluded: informational only, not fetched.
-        host-pinning = let
-          # Split across literals so this file never matches its own pattern.
-          staleHosts = "cod" + "eberg|cod" + "efloe";
-        in
-          pkgs.runCommand "rs-detritus-host-pinning" {} ''
-            if ${pkgs.lib.getExe pkgs.ripgrep} -v "sourceUrl" ${./flake.nix} ${./flake.lock} \
-              | ${pkgs.lib.getExe pkgs.ripgrep} -q "${staleHosts}"; then
-              echo "ERROR: retired forge host in flake inputs:" >&2
-              ${pkgs.lib.getExe pkgs.ripgrep} -v "sourceUrl" ${./flake.nix} ${./flake.lock} \
-                | ${pkgs.lib.getExe pkgs.ripgrep} -n "${staleHosts}" >&2 || true
-              exit 1
-            fi
-            touch $out
-          '';
-      };
+      checks =
+        {
+          default = detritus;
+          inherit detritus;
+          formatting = treefmtEval.config.build.check self;
+          fmt = craneLib.cargoFmt {
+            inherit src version;
+            pname = "detritus";
+          };
+          clippy = craneLib.cargoClippy (commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+            });
+          # Fail if flake inputs ever point at the retired Codeberg/Codefloe
+          # mirrors again (fleet migrated to github.com/caniko/*).
+          # sourceUrl package metadata is excluded: informational only, not fetched.
+          host-pinning = let
+            # Split across literals so this file never matches its own pattern.
+            staleHosts = "cod" + "eberg|cod" + "efloe";
+          in
+            pkgs.runCommand "rs-detritus-host-pinning" {} ''
+              if ${pkgs.lib.getExe pkgs.ripgrep} -v "sourceUrl" ${./flake.nix} ${./flake.lock} \
+                | ${pkgs.lib.getExe pkgs.ripgrep} -q "${staleHosts}"; then
+                echo "ERROR: retired forge host in flake inputs:" >&2
+                ${pkgs.lib.getExe pkgs.ripgrep} -v "sourceUrl" ${./flake.nix} ${./flake.lock} \
+                  | ${pkgs.lib.getExe pkgs.ripgrep} -n "${staleHosts}" >&2 || true
+                exit 1
+              fi
+              touch $out
+            '';
+        }
+        // release.checks;
 
       formatter = treefmtEval.config.build.wrapper;
 
