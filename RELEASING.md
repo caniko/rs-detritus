@@ -2,8 +2,11 @@
 
 The workspace publishes `detritus-protocol`, `detritus-client`, and
 `detritus-server` to crates.io. Versions are synchronized across all three
-during v0.x. GitHub Actions owns publication through
-[Publish Workspace](.github/workflows/publish-workspace.yaml).
+during v0.x. GitHub Actions owns publication through the
+[Build Workspace Crates](.github/workflows/publish-workspace.yaml) build and the
+[Trusted Crate Publisher](.github/workflows/trusted-publish-workspace.yaml) that
+publishes from it, and attaches the prebuilt binaries through
+[release](.github/workflows/release.yml).
 
 ## Prerequisites
 
@@ -12,6 +15,9 @@ during v0.x. GitHub Actions owns publication through
 - `CRATES_IO_API_TOKEN` is configured in the GitHub repository's Actions
   secrets. Supply the existing credential through stdin or the secret manager;
   never commit it or put it in a command-line argument.
+- The `SIMIT_PUBLISHER_REVISION` repository variable holds the immutable Simit
+  commit the trusted publisher is built from. Without it the publish jobs stop
+  at the "Require independently qualified publisher engine" step.
 - The signing key matches `keys/maintainers.gpg`. Run
   `simit release trust check` before creating a tag.
 - Use Simit 0.19.0 or newer with the versioned-dev-dependency ordering fix for
@@ -97,6 +103,13 @@ crate is packaged and dry-run checked, and dependent jobs wait for their
 prerequisites to appear on crates.io. Publishing runs are serialized and are
 never cancelled halfway through an upload.
 
+The same tag builds the `release-bundle` on `x86_64-linux` and
+`aarch64-darwin`, and attaches the static musl Linux archives, the Apple
+Silicon macOS archive and `SHA256SUMS.txt` to the GitHub release. Those assets
+are what `cargo binstall detritus-server` downloads, so
+`simit binstall sync --check` must pass before tagging; `simit release verify`
+enforces the same metadata.
+
 Watch [GitHub Actions](https://github.com/caniko/rs-detritus/actions) until every
 publish job succeeds. Verify each exact version on crates.io and then docs.rs:
 
@@ -116,6 +129,8 @@ documentation release as complete.
 - Fix a workflow or transient failure, then rerun the failed jobs or dispatch
   `publish-workspace.yaml` at the same signed tag. Already-published versions
   are accepted only when their archive checksums match the intended release.
+  The trusted publisher follows the build run, so rerun
+  `publish-workspace.yaml`; `release.yml` is rerun for its own failures.
 - Never move an existing published tag. If shipped code is wrong, prepare a new
   version; yank a broken version only after considering consumers.
 - If the token is revoked or expired, rotate the GitHub Actions secret from its

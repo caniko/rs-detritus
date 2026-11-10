@@ -2,7 +2,7 @@
 
 <!-- simit:badges:start -->
 
-[![CI](https://img.shields.io/badge/CI-managed+extra-2088ff)](.github/workflows/ci.yaml) [![Nix](https://img.shields.io/badge/Nix-drift-5277c3)](flake.nix) [![docs](https://img.shields.io/badge/docs-enabled-6f42c1)](docs) [![crates.io](https://img.shields.io/badge/crates.io-ready-f46623)](https://crates.io/crates/detritus-client)
+[![CI](https://img.shields.io/badge/CI-managed+extra-2088ff)](.github/workflows/ci.yaml) [![Nix](https://img.shields.io/badge/Nix-drift-5277c3)](flake.nix) [![docs](https://img.shields.io/badge/docs-enabled-6f42c1)](docs) [![crates.io](https://img.shields.io/badge/crates.io-publishable-f46623)](https://crates.io/crates/detritus-client)
 
 <!-- simit:badges:end -->
 
@@ -18,6 +18,17 @@ The v1 receiver exposes two ingestion endpoints:
 - [`detritus-protocol`](crates/detritus-protocol) - shared wire types, crash schema, and curated OTLP log bindings.
 - [`detritus-client`](crates/detritus-client) - tracing layer, panic hook, and offline crash shipper for Rust applications.
 - [`detritus-server`](crates/detritus-server) - `detritusd` receiver binary and embeddable server entry points.
+
+## Install
+
+Every release publishes prebuilt `detritusd` archives (static musl for
+x86_64/aarch64 Linux, native for Apple Silicon macOS) next to the crates.io
+packages, so `cargo binstall` can install the binary without compiling:
+
+```sh
+cargo binstall detritus-server   # prebuilt archive from the matching release
+cargo install detritus-server    # build from crates.io
+```
 
 ## Documentation
 
