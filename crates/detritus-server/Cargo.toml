@@ -1,6 +1,6 @@
 [package]
 name = "detritus-server"
-version = "0.2.0"
+version = "0.2.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -32,7 +32,7 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-detritus-protocol = { path = "../detritus-protocol", version = "0.2.0", features = [
+detritus-protocol = { path = "../detritus-protocol", version = "0.2.1", features = [
   "multipart",
 ] }
 
