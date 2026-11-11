@@ -105,7 +105,9 @@ never cancelled halfway through an upload.
 
 The same tag builds the `release-bundle` on `x86_64-linux` and
 `aarch64-darwin`, and attaches the static musl Linux archives, the Apple
-Silicon macOS archive and `SHA256SUMS.txt` to the GitHub release. Those assets
+Silicon macOS archive, `SHA256SUMS.txt` and its minisign signature
+`SHA256SUMS.txt.minisig` to the GitHub release. Verify the manifest with
+`minisign -Vm SHA256SUMS.txt -p keys/minisign.pub`. Those assets
 are what `cargo binstall detritus-server` downloads, so
 `simit binstall sync --check` must pass before tagging; `simit release verify`
 enforces the same metadata.

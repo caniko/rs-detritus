@@ -7,10 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-11
+
 ### Security
 
 - Require Rustls 0.23.46 to fix RUSTSEC-2026-0346, RUSTSEC-2026-0347,
   RUSTSEC-2026-0348, and RUSTSEC-2026-0349 without changing TLS features.
+
+### Changed
+
+- Release checksums (`SHA256SUMS.txt`) are now minisign-signed and verified
+  against the committed `keys/minisign.pub`.
 
 ## [0.2.0] - 2026-09-30
 
@@ -127,6 +134,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-file `#![warn(missing_docs)]` configuration in favor of the workspace lint
   policy.
 
-[Unreleased]: https://github.com/caniko/rs-detritus/compare/0.2.0...HEAD
+[Unreleased]: https://github.com/caniko/rs-detritus/compare/0.2.1...HEAD
+[0.2.1]: https://github.com/caniko/rs-detritus/compare/0.2.0...0.2.1
 [0.2.0]: https://github.com/caniko/rs-detritus/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/caniko/rs-detritus/releases/tag/0.1.0
