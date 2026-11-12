@@ -1,16 +1,31 @@
 [site]
 title = "detritus"
-description = "Lightweight crash and log ingestion for Rust applications."
+description = "A lightweight crash and log receiver for small Rust projects: OTLP/gRPC logs and multipart crash uploads on one port, with a client that spools both offline."
 base_url = "/"
-footer_note = "Generated from repository metadata by the plinth-project FOSS sweep."
 
 [[nav]]
 label = "Overview"
 href = "#overview"
 
 [[nav]]
+label = "Quick start"
+href = "#quick-start"
+
+[[nav]]
+label = "Documentation"
+href = "/docs/"
+
+[[nav]]
 label = "Source"
 href = "https://github.com/caniko/rs-detritus"
+
+[[footer_links]]
+label = "Docs"
+href = "/docs/"
+
+[[footer_links]]
+label = "Quick start"
+href = "/docs/getting-started/quick-start.html"
 
 [[footer_links]]
 label = "Source"
@@ -19,27 +34,109 @@ href = "https://github.com/caniko/rs-detritus"
 [[pages]]
 slug = "index"
 title = "detritus"
-description = "Lightweight crash and log ingestion for Rust applications."
+description = "A lightweight crash and log receiver for small Rust projects: OTLP/gRPC logs and multipart crash uploads on one port, with a client that spools both offline."
 
 [[pages.sections]]
 type = "hero"
 title = "detritus"
-tagline = "Crash and log ingestion for Rust applications"
-subtitle = "Collect OTLP logs and crash reports with a self-hosted receiver and an offline-capable Rust SDK."
+tagline = "Crash reports and logs, collected on your own server"
+subtitle = "A lightweight receiver for small Rust projects, built from a protocol crate, an OTLP/gRPC and multipart crash server, and a client that spools both when the network is down."
 
 [[pages.sections.ctas]]
 label = "View source"
 href = "https://github.com/caniko/rs-detritus"
 primary = true
 
+[[pages.sections.ctas]]
+label = "Documentation"
+href = "/docs/"
+
 [[pages.sections]]
 type = "feature_grid"
 id = "overview"
 
 [[pages.sections.features]]
-title = "Rust"
-description = "Project technology detected from repository manifests."
+title = "OTLP logs over gRPC"
+description = "The receiver implements opentelemetry.proto.collector.logs.v1.LogsService.Export, so an existing OpenTelemetry client ships logs with no custom wire protocol. Batches are appended as NDJSON per project, source and day."
 
 [[pages.sections.features]]
-title = "Nix"
-description = "Project technology detected from repository manifests."
+title = "Crash uploads with their artifacts"
+description = "Applications POST multipart to /v1/crashes: JSON crash metadata, the binary dump, and optional attach parts. Dumps land in a content-addressed SHA-256 blob store, and the response reports the blob hash and whether the upload deduplicated."
+
+[[pages.sections.features]]
+title = "A client that survives an outage"
+description = "The detritus-client tracing layer spools protobuf log batches to a queue directory and retries them with bounded attempts, while the panic hook writes a crash entry to disk before shipping it. An outage does not lose the report that explains it."
+
+[[pages.sections.features]]
+title = "One port, self-hosted"
+description = "A single axum router with tonic routes mounted on it serves gRPC and HTTP on port 4317, as the detritusd binary or embedded in your own process. Token files hold salted Argon2id hashes rather than raw tokens, and a NixOS module wires the file from a secret."
+
+[[pages.sections]]
+type = "content"
+id = "sdk"
+heading = "Send from a Rust application"
+html = '''
+<p>The client crate is a tracing layer plus an optional panic hook. Point the builder at the receiver, give it a token and a source identity, and every event on the subscriber goes out over OTLP/gRPC; the queue directory holds anything it could not send yet.</p>
+<pre><code>use detritus::{CompressionEncoding, Layer, SourceId};
+use secrecy::SecretString;
+use tracing_subscriber::{Registry, layer::SubscriberExt};
+use url::Url;
+use uuid::Uuid;
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    let layer = Layer::builder()
+        .endpoint(Url::parse("http://127.0.0.1:4317")?)
+        .token(SecretString::from(std::env::var("DETRITUS_TOKEN")?))
+        .compression(CompressionEncoding::Zstd)
+        .source(SourceId {
+            project: "my-game".to_owned(),
+            platform: "linux".to_owned(),
+            version: "0.1.0".to_owned(),
+            install_id: Uuid::nil(),
+        })
+        .queue_dir("./detritus-spool".into())
+        .build()?;
+
+    let subscriber = Registry::default().with(layer);
+    tracing::subscriber::with_default(subscriber, || {
+        tracing::info!("shipped to the local receiver");
+    });
+
+    Ok(())
+}
+</code></pre>
+<p>Runnable versions live in the workspace: cargo run --example install_layer -p detritus-client, and cargo run --example embed_server -p detritus-server for the receiver side.</p>
+'''
+
+[[pages.sections]]
+type = "install"
+id = "quick-start"
+heading = "Quick start"
+intro = "Install the receiver, start it with a token file, then check the listener answers. The quick start in the documentation covers the token file shape and a first crash upload."
+guide_href = "/docs/getting-started/quick-start.html"
+
+[[pages.sections.primary_routes]]
+label = "Install the receiver"
+audience = "Prebuilt archive for Linux (musl) and Apple Silicon macOS"
+href = "/docs/getting-started/installation.html#crate-installation"
+command = "cargo binstall detritus-server"
+recommended = true
+
+[[pages.sections.primary_routes]]
+label = "Run it locally"
+audience = "From a checkout, with tokens.toml holding Argon2id hashes"
+href = "/docs/getting-started/quick-start.html#2-start-the-receiver"
+command = "cargo run -p detritus-server -- --bind 127.0.0.1:4317 --data-dir ./detritus-data --tokens-config ./tokens.toml"
+
+[[pages.sections.secondary_routes]]
+label = "Build from crates.io"
+audience = "Rust 1.88 or newer, compiles the receiver"
+href = "/docs/getting-started/installation.html#crate-installation"
+command = "cargo install detritus-server"
+
+[[pages.sections.secondary_routes]]
+label = "Check the listener"
+audience = "Returns 204 No Content when the receiver is up"
+href = "/docs/getting-started/quick-start.html#3-verify-the-local-listener"
+command = "curl -i http://127.0.0.1:4317/healthz"
