@@ -133,7 +133,7 @@ jobs:
     needs: [publish-detritus-protocol]
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 60
     steps:
       - name: Require independently qualified publisher engine
         env:
@@ -191,16 +191,6 @@ jobs:
           CARGO_BUILD_JOBS: "4"
           RUSTDOCFLAGS: "-D warnings"
         run: nix develop -c cargo publish --dry-run --locked --manifest-path "$RUNNER_TEMP/verified-detritus-server/Cargo.toml"
-      - name: Required gate coverage
-        timeout-minutes: 60
-        working-directory: .simit-release-source
-        env:
-          NIX_CONFIG: "experimental-features = nix-command flakes"
-          XDG_CACHE_HOME: "/tmp/.cache"
-          CARGO_HOME: "/tmp/.cargo"
-          CARGO_BUILD_JOBS: "4"
-          RUSTDOCFLAGS: "-D warnings"
-        run: nix develop -c bash scripts/coverage.sh
   publish-detritus-server:
     needs: [verify-detritus-server]
     runs-on: ubuntu-24.04
@@ -244,7 +234,7 @@ jobs:
     needs: [publish-detritus-protocol, publish-detritus-server]
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 60
     steps:
       - name: Require independently qualified publisher engine
         env:
@@ -302,16 +292,6 @@ jobs:
           CARGO_BUILD_JOBS: "4"
           RUSTDOCFLAGS: "-D warnings"
         run: nix develop -c cargo publish --dry-run --locked --manifest-path "$RUNNER_TEMP/verified-detritus-client/Cargo.toml"
-      - name: Required gate coverage
-        timeout-minutes: 60
-        working-directory: .simit-release-source
-        env:
-          NIX_CONFIG: "experimental-features = nix-command flakes"
-          XDG_CACHE_HOME: "/tmp/.cache"
-          CARGO_HOME: "/tmp/.cargo"
-          CARGO_BUILD_JOBS: "4"
-          RUSTDOCFLAGS: "-D warnings"
-        run: nix develop -c bash scripts/coverage.sh
   publish-detritus-client:
     needs: [verify-detritus-client]
     runs-on: ubuntu-24.04

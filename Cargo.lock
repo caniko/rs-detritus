@@ -563,7 +563,7 @@ dependencies = [
 
 [[package]]
 name = "detritus-client"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "chrono",
  "detritus-protocol",
@@ -594,7 +594,7 @@ dependencies = [
 
 [[package]]
 name = "detritus-protocol"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "bytes",
  "chrono",
@@ -614,7 +614,7 @@ dependencies = [
 
 [[package]]
 name = "detritus-server"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "argon2",
  "axum",

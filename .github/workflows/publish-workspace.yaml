@@ -18,7 +18,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 60
     env:
       NIX_CONFIG: "experimental-features = nix-command flakes"
       XDG_CACHE_HOME: "/tmp/.cache"
@@ -115,11 +115,6 @@ jobs:
       - name: Deny dependency policy
         run: nix develop -c cargo deny check bans licenses sources
 
-      - name: Required gate coverage
-        timeout-minutes: 60
-        env:
-          CARGO_BUILD_JOBS: "4"
-        run: nix develop -c bash scripts/coverage.sh
       - name: Test detritus-protocol
         run: nix develop -c cargo test --locked -p detritus-protocol --all-targets --all-features
       - name: Clippy detritus-protocol

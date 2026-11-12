@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-12
+
+### Fixed
+
+- Release archives: the GitHub release now builds and publishes the signed
+  cargo-binstall archives (the previous tag's release workflow failed).
+
 ## [0.2.1] - 2026-11-11
 
 ### Security
@@ -134,7 +141,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-file `#![warn(missing_docs)]` configuration in favor of the workspace lint
   policy.
 
-[Unreleased]: https://github.com/caniko/rs-detritus/compare/0.2.1...HEAD
+[Unreleased]: https://github.com/caniko/rs-detritus/compare/0.2.2...HEAD
+[0.2.2]: https://github.com/caniko/rs-detritus/compare/0.2.1...0.2.2
 [0.2.1]: https://github.com/caniko/rs-detritus/compare/0.2.0...0.2.1
 [0.2.0]: https://github.com/caniko/rs-detritus/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/caniko/rs-detritus/releases/tag/0.1.0
