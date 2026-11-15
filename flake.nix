@@ -4,10 +4,9 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    rust-overlay = {
-      url = "github:oxalica/rust-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # harbor-rs owns the Rust toolchain; follow its overlay so its pinned
+    # channels always exist.
+    rust-overlay.follows = "harbor-rs/rust-overlay";
     crane.url = "github:ipetkov/crane";
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
@@ -24,7 +23,6 @@
     harbor-rs = {
       url = "git+https://github.com/caniko/harbor-rs.git?ref=trunk&rev=0d53ee174d64cdebf22666691a7e8a99b2eb8cc6";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.rust-overlay.follows = "rust-overlay";
       inputs.crane.follows = "crane";
     };
   };
