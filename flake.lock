@@ -1147,17 +1147,17 @@
         "rust-overlay": "rust-overlay_2"
       },
       "locked": {
-        "lastModified": 1794322534,
-        "narHash": "sha256-0vRgC+Qhqk8kglcG6QsqqpsD5RitQ9J695WrkmP7wmY=",
+        "lastModified": 1794790451,
+        "narHash": "sha256-id21fnySLl9ZGTP2N7DE3lmDzPTEqabfRmRM5zq8Jls=",
         "ref": "trunk",
-        "rev": "0d53ee174d64cdebf22666691a7e8a99b2eb8cc6",
-        "revCount": 323,
+        "rev": "a2c6f8e0d0b3356a2528de381e6a095d150971fb",
+        "revCount": 348,
         "type": "git",
         "url": "https://github.com/caniko/harbor-rs.git"
       },
       "original": {
         "ref": "trunk",
-        "rev": "0d53ee174d64cdebf22666691a7e8a99b2eb8cc6",
+        "rev": "a2c6f8e0d0b3356a2528de381e6a095d150971fb",
         "type": "git",
         "url": "https://github.com/caniko/harbor-rs.git"
       }
@@ -2312,11 +2312,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1794733384,
-        "narHash": "sha256-VaXNWDU+9dXckN4BlZbrcYTTd9pIscLeiknbhHX4+lk=",
+        "lastModified": 1791707771,
+        "narHash": "sha256-w3m8HtAVCfGTHw+gcCTAy7jFHSdGbokm8NngbeFrkek=",
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "rev": "67f1944c7c99d8dbb57fa3d83043bc0a92cbcc56",
+        "rev": "c1cfa7a2c809d364ac1a7e9b3ec418afa3f19793",
         "type": "github"
       },
       "original": {
