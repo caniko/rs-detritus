@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `POST /v1/admin/purge-source` lets a scoped, purge-enabled token delete one
+  installation's logs, crash indexes, and unshared crash blobs.
+
+### Fixed
+
+- Crash indexes are published atomically. A corrupt surviving index no longer
+  stops retention from expiring logs and indexes; only blob cleanup is skipped.
+
 ## [0.2.2] - 2026-11-12
 
 ### Fixed

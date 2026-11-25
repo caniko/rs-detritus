@@ -86,12 +86,19 @@ detritusd \
 ```
 
 The janitor removes expired log files, expired crash source indexes, and then any content-addressed blobs no longer referenced by an index.
+If a surviving crash index is corrupt, the janitor logs an error with its path
+and still deletes expired logs and indexes. It skips blob deletion for that cycle
+because the corrupt index may still reference live blobs. Blob cleanup resumes
+after the index is repaired, removed, or expires.
 
 ## Purging a source
 
 Set `can_purge = true` on a dedicated `[[token]]` entry to allow deletion. It defaults
 to `false`. The token's `project` and `source_prefix` still restrict which sources it
 can purge.
+
+Block `/v1/admin/*` at public ingress (including Caddy) and make the purge
+endpoint reachable only through a private operator path.
 
 Send `POST /v1/admin/purge-source` with `Authorization: Bearer <token>`,
 `Content-Type: application/json`, and a body such as:
@@ -100,17 +107,21 @@ Send `POST /v1/admin/purge-source` with `Authorization: Bearer <token>`,
 {"project":"regicide","install_id":"11111111-1111-1111-1111-111111111111"}
 ```
 
-The server closes the source's log writer, deletes its logs and crash indexes, then
-sweeps unreferenced crash blobs. Dumps and attachments referenced by a surviving
-index are kept. A successful response is `200 OK` with `logs_deleted`,
-`indexes_deleted`, `blobs_deleted`, and `bytes_freed`. An unknown or already deleted
-source returns zero for every count. The periodic janitor can still clean up orphans
-left by an interrupted purge.
+The server closes the source's log writer and checks crash references before
+deleting anything. If a crash index needed for that check cannot be read or
+parsed, the request returns `500` without deleting the source's files; retry
+after repairing or removing the corrupt index. A logs-only purge does not check
+other sources' indexes. Only dumps and attachments referenced by the target
+source but by no surviving index are deleted. A successful response is `200 OK`
+with `logs_deleted`, `indexes_deleted`, `blobs_deleted`, and `bytes_freed`. An
+unknown or already deleted source returns zero for every count. The periodic
+janitor can still clean up orphans left by an interrupted purge.
 
-An invalid body or path component returns `400`, a missing or invalid bearer `401`,
-an insufficiently scoped token `403`, and a storage failure `500`. Ingest rate limits
-do not apply. Purging does not block future uploads for that source; stop them upstream
-if the source must stay deleted.
+A missing or invalid bearer returns `401`. A token without purge capability
+returns `403` before the body is parsed. For a purge-enabled token, an invalid
+body or path component returns `400`, an out-of-scope source `403`, and a storage
+failure `500`. Ingest rate limits do not apply. Purging does not block future
+uploads for that source; stop them upstream if the source must stay deleted.
 
 Each call emits a structured `purge_source` event at `detritus::audit` with the token ID
 (not the bearer), project, source ID, deletion counts, and `ok` or `error`. Unavailable

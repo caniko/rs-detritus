@@ -19,6 +19,12 @@ fn token_config(hash: &str) -> String {
 }
 
 #[test]
+fn token_without_purge_capability_defaults_to_false() {
+    let config: TokensConfig = toml::from_str(&token_config(LEGACY_HASH)).unwrap();
+    assert!(!config.token[0].can_purge);
+}
+
+#[test]
 fn legacy_hash_authenticates_only_correct_secret_and_debug_redacts_hash() {
     let test_token = entry(LEGACY_HASH);
     assert!(!format!("{test_token:?}").contains(LEGACY_HASH.trim()));

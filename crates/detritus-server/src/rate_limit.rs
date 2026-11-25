@@ -50,6 +50,14 @@ impl RateLimiter {
         }
     }
 
+    pub(crate) async fn remove_source(&self, source: &SourceKey) {
+        let source = source.canonical();
+        self.buckets
+            .lock()
+            .await
+            .retain(|key, _| key.source != source);
+    }
+
     pub(crate) async fn check_logs(
         &self,
         token: &TokenContext,

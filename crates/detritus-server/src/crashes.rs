@@ -145,7 +145,9 @@ async fn crashes_inner(
 
     // Read the request into private staging before taking the maintenance lock
     // so slow uploads cannot block purges or retention sweeps.
-    let staging = tempfile::tempdir_in(state.storage.tmp_dir())?;
+    let tmp = state.storage.tmp_dir();
+    fs::create_dir_all(&tmp).await?;
+    let staging = tempfile::tempdir_in(tmp)?;
     let mut dump = None;
     let mut attachments = Vec::new();
 
@@ -192,7 +194,6 @@ async fn crashes_inner(
             // Publish blobs and their index within the same lock, including if
             // the client disconnects. A blob snapshot alone misses this race.
             let _guard = guard;
-            let _staging = staging;
             let dump = dump.publish(&storage).await?;
             let mut pointers = Vec::with_capacity(attachments.len());
             for (key, content_type, blob) in attachments {
@@ -207,7 +208,7 @@ async fn crashes_inner(
                     content_encoding: pointer.content_encoding,
                 });
             }
-            write_index(&storage, &source, metadata, &dump, pointers).await?;
+            write_index(&storage, staging.path(), &source, metadata, &dump, pointers).await?;
             Ok::<_, CrashError>(dump)
         }
         .in_current_span(),
@@ -337,6 +338,7 @@ async fn finalize_blob(
 
 async fn write_index(
     storage: &StoragePaths,
+    staging: &Path,
     source: &SourceKey,
     metadata: CrashMetadata,
     dump: &BlobPointer,
@@ -359,7 +361,13 @@ async fn write_index(
         attachments,
     };
     let encoded = serde_json::to_vec_pretty(&index)?;
-    fs::write(path, encoded).await?;
+    let tmp = staging.join("index.json");
+    let mut file = fs::File::create(&tmp).await?;
+    file.write_all(&encoded).await?;
+    file.flush().await?;
+    file.sync_all().await?;
+    drop(file);
+    fs::rename(tmp, path).await?;
     Ok(())
 }
 

@@ -60,6 +60,40 @@ async fn janitor_smoke_prunes_expired_logs_indexes_and_unreferenced_blobs() {
 }
 
 #[tokio::test]
+async fn corrupt_index_skips_blob_sweep_without_stopping_expiry() {
+    let temp = TempDir::new().expect("temp dir");
+    let root = temp.path();
+    let storage = StoragePaths::new(root.to_path_buf());
+    storage.prepare().await.expect("prepare storage");
+    let old_log = root.join("logs/detritus/old-source/2026-01-01.ndjson");
+    write_file(&old_log, b"old\n").await;
+    let old_blob = write_blob(root, b"old crash").await;
+    let possible_live_blob = write_blob(root, b"possibly live crash").await;
+    let old_index = write_index(root, "old-source", &old_blob).await;
+    let corrupt = root.join("crashes/by-source/detritus/current/broken.json");
+    write_file(&corrupt, b"{").await;
+    set_old_mtime(&old_log);
+    set_old_mtime(&old_index);
+    let config = RetentionConfig {
+        crashes_ttl_days: 14,
+        ..RetentionConfig::default()
+    };
+
+    let error = run_janitor_cycle(&storage, config).await.unwrap_err();
+    assert!(error.to_string().contains(&corrupt.display().to_string()));
+    assert!(!old_log.exists());
+    assert!(!old_index.exists());
+    assert!(corrupt.exists());
+    assert!(blob_path(root, &old_blob).exists());
+    assert!(blob_path(root, &possible_live_blob).exists());
+
+    set_old_mtime(&corrupt);
+    let stats = run_janitor_cycle(&storage, config).await.unwrap();
+    assert_eq!(stats.indexes_deleted, 1);
+    assert_eq!(stats.blobs_deleted, 2);
+}
+
+#[tokio::test]
 async fn janitor_ttl_zero_wipes_all_ndjson() {
     let temp = TempDir::new().expect("temp dir");
     let storage = StoragePaths::new(temp.path().to_path_buf());

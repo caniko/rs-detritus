@@ -102,10 +102,7 @@ impl StoragePaths {
     }
 
     pub(crate) fn blob_path(&self, sha256: &str) -> PathBuf {
-        // Invariant: `sha256` is a 64-char lowercase hex digest produced by
-        // `hex::encode(Sha256::finalize(..))` at the single call site, so the
-        // two-char shard prefix is always in range and on a char boundary. A
-        // future caller passing an untrusted/short hash must validate it first.
+        // Callers generate or validate the 64-char lowercase hex digest.
         let prefix = &sha256[..2];
         self.data_dir
             .join("crashes")
@@ -120,11 +117,13 @@ impl StoragePaths {
     }
 
     pub(crate) fn source_indexes_dir(&self, source: &SourceKey) -> PathBuf {
-        self.data_dir
-            .join("crashes")
-            .join("by-source")
+        self.indexes_dir()
             .join(&source.project)
             .join(&source.source_id)
+    }
+
+    pub(crate) fn indexes_dir(&self) -> PathBuf {
+        self.data_dir.join("crashes").join("by-source")
     }
 
     pub(crate) fn relative_to_data_dir<'a>(&self, path: &'a Path) -> &'a Path {
@@ -137,7 +136,7 @@ impl StoragePaths {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum StorageError {
-    /// Storage path component was empty or contained path separators.
+    /// Storage path component was not a valid single name of at most 255 bytes.
     #[error("invalid storage path component `{name}`: `{value}`")]
     InvalidComponent { name: &'static str, value: String },
     /// Filesystem operation failed.
@@ -146,7 +145,8 @@ pub enum StorageError {
 }
 
 pub(crate) fn validate_component(name: &'static str, value: &str) -> Result<(), StorageError> {
-    let invalid = value.contains(['/', '\\', '\0'])
+    let invalid = value.len() > 255
+        || value.contains(['/', '\\', '\0'])
         || !matches!(
             Path::new(value).components().next(),
             Some(Component::Normal(_))

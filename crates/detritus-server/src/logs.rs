@@ -132,12 +132,12 @@ impl LogsHandler {
                     "token is not permitted to write this source",
                 ));
             }
+            // Don't reopen a writer while purge is draining and deleting it.
+            let _guard = self.maintenance.lock().await;
             self.rate_limiter
                 .check_logs(&token, &source)
                 .await
                 .map_err(|_| Status::resource_exhausted("log rate limit exceeded"))?;
-            // Don't reopen a writer while purge is draining and deleting it.
-            let _guard = self.maintenance.lock().await;
             let sender = self.writers.sender_for(source.clone()).await?;
             for scope_logs in resource_logs.scope_logs {
                 for record in scope_logs.log_records {

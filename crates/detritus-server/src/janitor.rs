@@ -59,21 +59,18 @@ pub(crate) fn spawn_janitor(
         loop {
             interval.tick().await;
             let started = Instant::now();
+            let mut stats = JanitorStats::default();
             let result = {
                 let _guard = maintenance.lock().await;
-                run_janitor_cycle(&storage, config).await
+                run_cycle(&storage, config, &mut stats).await
             };
+            let label = if result.is_ok() { "ok" } else { "error" };
+            metrics.observe_janitor(label, started.elapsed(), &stats.as_metrics());
             match result {
-                Ok(stats) => {
-                    metrics.observe_janitor("ok", started.elapsed(), &stats.as_metrics());
-                    tracing::info!(?stats, "retention janitor cycle complete");
-                }
+                Ok(()) => tracing::info!(?stats, "retention janitor cycle complete"),
+                // Already reported with its path while collecting references.
+                Err(JanitorError::CorruptIndex { .. }) => {}
                 Err(error) => {
-                    metrics.observe_janitor(
-                        "error",
-                        started.elapsed(),
-                        &JanitorMetricStats::default(),
-                    );
                     tracing::error!(%error, "retention janitor cycle failed");
                 }
             }
@@ -87,20 +84,20 @@ pub async fn run_janitor_cycle(
     config: RetentionConfig,
 ) -> Result<JanitorStats, JanitorError> {
     let mut stats = JanitorStats::default();
-    prune_logs(storage, config.logs_ttl_days, &mut stats).await?;
-    sweep_unreferenced_blobs(storage, Some(config.crashes_ttl_days), &mut stats).await?;
+    run_cycle(storage, config, &mut stats).await?;
     Ok(stats)
 }
 
-pub(crate) async fn sweep_unreferenced_blobs(
+async fn run_cycle(
     storage: &StoragePaths,
-    index_ttl_days: Option<u64>,
+    config: RetentionConfig,
     stats: &mut JanitorStats,
 ) -> Result<(), JanitorError> {
+    prune_logs(storage, config.logs_ttl_days, stats).await?;
     // Snapshot candidates before scanning indexes, never the other way around.
     let snapshot =
-        collect_files(storage, &storage.data_dir().join("crashes").join("by-hash")).await?;
-    let referenced = collect_index_references(storage, index_ttl_days, stats).await?;
+        collect_files(storage, &storage.data_dir().join("crashes/by-hash"), None).await?;
+    let referenced = collect_index_references(storage, config.crashes_ttl_days, stats).await?;
     sweep_blobs(&snapshot, &referenced, stats).await
 }
 
@@ -110,7 +107,7 @@ async fn prune_logs(
     stats: &mut JanitorStats,
 ) -> Result<(), JanitorError> {
     let root = storage.data_dir().join("logs");
-    let files = collect_files(storage, &root).await?;
+    let files = collect_files(storage, &root, None).await?;
     for file in files {
         if file.extension().and_then(|ext| ext.to_str()) != Some("ndjson") {
             continue;
@@ -127,33 +124,62 @@ async fn prune_logs(
 
 async fn collect_index_references(
     storage: &StoragePaths,
-    ttl_days: Option<u64>,
+    ttl_days: u64,
     stats: &mut JanitorStats,
 ) -> Result<HashSet<String>, JanitorError> {
-    let root = storage.data_dir().join("crashes").join("by-source");
-    let files = collect_files(storage, &root).await?;
+    let files = collect_files(storage, &storage.indexes_dir(), None).await?;
     let mut referenced = HashSet::new();
-    for file in files {
-        if file.extension().and_then(|ext| ext.to_str()) != Some("json") {
-            continue;
-        }
-        if let Some(ttl_days) = ttl_days
-            && is_older_than(&file, ttl_days).await?
-        {
+    let mut corrupt = None;
+    for file in files.into_iter().filter(|file| is_crash_index(file)) {
+        if is_older_than(&file, ttl_days).await? {
             let len = file_len(&file).await;
             fs::remove_file(&file).await?;
             stats.indexes_deleted += 1;
             stats.bytes_freed += len;
             continue;
         }
-        let bytes = fs::read(&file).await?;
-        // A corrupt surviving index may still reference blobs. Fail closed.
-        let index: CrashIndexRef = serde_json::from_slice(&bytes)
-            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-        referenced.insert(index.dump.sha256);
-        referenced.extend(index.attachments.into_iter().map(|blob| blob.sha256));
+        match read_index_hashes(&file).await {
+            Ok(hashes) => referenced.extend(hashes),
+            Err(error @ JanitorError::CorruptIndex { .. }) => {
+                tracing::error!(path = %file.display(), %error, "skipping blob sweep");
+                corrupt.get_or_insert(error);
+            }
+            Err(error) => return Err(error),
+        }
     }
-    Ok(referenced)
+    corrupt.map_or(Ok(referenced), Err)
+}
+
+pub(crate) fn is_crash_index(file: &Path) -> bool {
+    file.extension().and_then(|ext| ext.to_str()) == Some("json")
+}
+
+pub(crate) async fn read_index_hashes(
+    file: &Path,
+) -> Result<impl Iterator<Item = String> + use<>, JanitorError> {
+    let bytes = fs::read(file).await?;
+    let corrupt = |reason| JanitorError::CorruptIndex {
+        path: file.to_path_buf(),
+        reason,
+    };
+    let index: CrashIndexRef =
+        serde_json::from_slice(&bytes).map_err(|error| corrupt(error.to_string()))?;
+    // The purge also uses these digests to construct blob paths.
+    if !std::iter::once(&index.dump)
+        .chain(&index.attachments)
+        .all(|blob| {
+            blob.sha256.len() == 64
+                && blob
+                    .sha256
+                    .bytes()
+                    .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+        })
+    {
+        return Err(corrupt("invalid SHA-256 digest".to_owned()));
+    }
+    Ok(std::iter::once(index.dump)
+        .chain(index.attachments)
+        .map(|blob| blob.sha256))
 }
 
 async fn sweep_blobs(
@@ -188,7 +214,11 @@ async fn sweep_blobs(
     Ok(())
 }
 
-async fn collect_files(storage: &StoragePaths, root: &Path) -> Result<Vec<PathBuf>, JanitorError> {
+pub(crate) async fn collect_files(
+    storage: &StoragePaths,
+    root: &Path,
+    exclude: Option<&Path>,
+) -> io::Result<Vec<PathBuf>> {
     if !storage.contains_dir(root).await? {
         return Ok(Vec::new());
     }
@@ -197,17 +227,20 @@ async fn collect_files(storage: &StoragePaths, root: &Path) -> Result<Vec<PathBu
     while let Some(dir) = dirs.pop() {
         let mut entries = fs::read_dir(&dir).await?;
         while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if exclude == Some(path.as_path()) {
+                continue;
+            }
             let ty = entry.file_type().await?;
             if ty.is_dir() {
-                dirs.push(entry.path());
+                dirs.push(path);
             } else if ty.is_file() {
-                files.push(entry.path());
+                files.push(path);
             } else if ty.is_symlink() {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    "unexpected symlink in retention tree",
-                )
-                .into());
+                    format!("unexpected symlink in storage tree: {}", path.display()),
+                ));
             }
         }
     }
@@ -260,4 +293,12 @@ pub enum JanitorError {
     /// Filesystem operation failed during retention cleanup.
     #[error("janitor I/O error: {0}")]
     Io(#[from] std::io::Error),
+    /// A surviving crash index could not be parsed safely.
+    #[error("corrupt crash index {}: {reason}", path.display())]
+    CorruptIndex {
+        /// Path of the index.
+        path: PathBuf,
+        /// Why the index could not be used.
+        reason: String,
+    },
 }

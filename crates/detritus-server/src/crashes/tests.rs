@@ -118,14 +118,13 @@ async fn staged_crash_can_finish_after_a_sweep() {
         .storage
         .blob_path(&hex::encode(Sha256::digest(b"context")));
     assert!(!dump_path.exists() && !attachment_path.exists());
-    let mut stats = crate::JanitorStats::default();
-    crate::janitor::sweep_unreferenced_blobs(&state.storage, None, &mut stats)
+    let stats = crate::run_janitor_cycle(&state.storage, crate::RetentionConfig::default())
         .await
         .unwrap();
     assert_eq!(stats.blobs_deleted, 0);
     drop(guard);
     assert_eq!(upload.await.unwrap().0, StatusCode::CREATED);
-    crate::janitor::sweep_unreferenced_blobs(&state.storage, None, &mut stats)
+    let stats = crate::run_janitor_cycle(&state.storage, crate::RetentionConfig::default())
         .await
         .unwrap();
     assert_eq!(stats.blobs_deleted, 0);

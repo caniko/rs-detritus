@@ -194,6 +194,13 @@ impl Metrics {
             .set(depth);
     }
 
+    pub(crate) fn remove_writer_queue_depth(&self, source_id: &str) {
+        let _ = self
+            .inner
+            .writer_queue_depth
+            .remove_label_values(&[source_id]);
+    }
+
     pub(crate) fn observe_janitor(
         &self,
         result: &str,

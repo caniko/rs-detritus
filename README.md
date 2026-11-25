@@ -8,10 +8,12 @@
 
 detritus is a lightweight crash and log receiver for small Rust projects.
 
-The v1 receiver exposes two ingestion endpoints:
+The v1 receiver exposes these endpoints:
 
 - `/v1/logs` via OTLP/gRPC by implementing `opentelemetry.proto.collector.logs.v1.LogsService.Export`.
 - `/v1/crashes` via HTTP/2 multipart upload with JSON metadata and a binary crash artifact.
+- `POST /v1/admin/purge-source` deletes one installation's data with a
+  [scoped, purge-enabled bearer token](docs/src/deployment/operations.md#purging-a-source).
 
 ## Crates
 
