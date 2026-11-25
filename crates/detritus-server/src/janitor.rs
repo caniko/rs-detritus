@@ -1,11 +1,13 @@
 use std::{
     collections::HashSet,
+    io,
     path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
 
-use serde::Deserialize;
-use tokio::{fs, task::JoinHandle};
+use serde::{Deserialize, Serialize};
+use tokio::{fs, sync::Mutex, task::JoinHandle};
 
 use crate::{
     metrics::{JanitorMetricStats, Metrics},
@@ -34,7 +36,7 @@ impl Default for RetentionConfig {
 }
 
 /// Files and bytes removed by one janitor cycle.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct JanitorStats {
     /// NDJSON log files removed.
     pub logs_deleted: u64,
@@ -50,13 +52,18 @@ pub(crate) fn spawn_janitor(
     storage: StoragePaths,
     config: RetentionConfig,
     metrics: Metrics,
+    maintenance: Arc<Mutex<()>>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(config.janitor_interval);
         loop {
             interval.tick().await;
             let started = Instant::now();
-            match run_janitor_cycle(&storage, config).await {
+            let result = {
+                let _guard = maintenance.lock().await;
+                run_janitor_cycle(&storage, config).await
+            };
+            match result {
                 Ok(stats) => {
                     metrics.observe_janitor("ok", started.elapsed(), &stats.as_metrics());
                     tracing::info!(?stats, "retention janitor cycle complete");
@@ -80,12 +87,21 @@ pub async fn run_janitor_cycle(
     config: RetentionConfig,
 ) -> Result<JanitorStats, JanitorError> {
     let mut stats = JanitorStats::default();
-    let blob_snapshot = snapshot_blobs(&storage.data_dir().join("crashes").join("by-hash")).await?;
     prune_logs(storage, config.logs_ttl_days, &mut stats).await?;
-    let referenced =
-        prune_indexes_and_collect_references(storage, config.crashes_ttl_days, &mut stats).await?;
-    sweep_blobs(&blob_snapshot, &referenced, &mut stats).await?;
+    sweep_unreferenced_blobs(storage, Some(config.crashes_ttl_days), &mut stats).await?;
     Ok(stats)
+}
+
+pub(crate) async fn sweep_unreferenced_blobs(
+    storage: &StoragePaths,
+    index_ttl_days: Option<u64>,
+    stats: &mut JanitorStats,
+) -> Result<(), JanitorError> {
+    // Snapshot candidates before scanning indexes, never the other way around.
+    let snapshot =
+        collect_files(storage, &storage.data_dir().join("crashes").join("by-hash")).await?;
+    let referenced = collect_index_references(storage, index_ttl_days, stats).await?;
+    sweep_blobs(&snapshot, &referenced, stats).await
 }
 
 async fn prune_logs(
@@ -94,7 +110,7 @@ async fn prune_logs(
     stats: &mut JanitorStats,
 ) -> Result<(), JanitorError> {
     let root = storage.data_dir().join("logs");
-    let files = collect_files(&root).await?;
+    let files = collect_files(storage, &root).await?;
     for file in files {
         if file.extension().and_then(|ext| ext.to_str()) != Some("ndjson") {
             continue;
@@ -109,19 +125,21 @@ async fn prune_logs(
     Ok(())
 }
 
-async fn prune_indexes_and_collect_references(
+async fn collect_index_references(
     storage: &StoragePaths,
-    ttl_days: u64,
+    ttl_days: Option<u64>,
     stats: &mut JanitorStats,
 ) -> Result<HashSet<String>, JanitorError> {
     let root = storage.data_dir().join("crashes").join("by-source");
-    let files = collect_files(&root).await?;
+    let files = collect_files(storage, &root).await?;
     let mut referenced = HashSet::new();
     for file in files {
         if file.extension().and_then(|ext| ext.to_str()) != Some("json") {
             continue;
         }
-        if is_older_than(&file, ttl_days).await? {
+        if let Some(ttl_days) = ttl_days
+            && is_older_than(&file, ttl_days).await?
+        {
             let len = file_len(&file).await;
             fs::remove_file(&file).await?;
             stats.indexes_deleted += 1;
@@ -129,10 +147,11 @@ async fn prune_indexes_and_collect_references(
             continue;
         }
         let bytes = fs::read(&file).await?;
-        if let Ok(index) = serde_json::from_slice::<CrashIndexRef>(&bytes) {
-            referenced.insert(index.dump.sha256);
-            referenced.extend(index.attachments.into_iter().map(|blob| blob.sha256));
-        }
+        // A corrupt surviving index may still reference blobs. Fail closed.
+        let index: CrashIndexRef = serde_json::from_slice(&bytes)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        referenced.insert(index.dump.sha256);
+        referenced.extend(index.attachments.into_iter().map(|blob| blob.sha256));
     }
     Ok(referenced)
 }
@@ -152,7 +171,11 @@ async fn sweep_blobs(
         if referenced.contains(hash) {
             continue;
         }
-        let len = file_len(blob).await;
+        let len = match fs::metadata(blob).await {
+            Ok(metadata) => metadata.len(),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
         match fs::remove_file(blob).await {
             Ok(()) => {
                 stats.blobs_deleted += 1;
@@ -165,17 +188,8 @@ async fn sweep_blobs(
     Ok(())
 }
 
-async fn snapshot_blobs(root: &Path) -> Result<Vec<PathBuf>, JanitorError> {
-    collect_files(root).await.map(|files| {
-        files
-            .into_iter()
-            .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("bin"))
-            .collect()
-    })
-}
-
-async fn collect_files(root: &Path) -> Result<Vec<PathBuf>, JanitorError> {
-    if !fs::try_exists(root).await? {
+async fn collect_files(storage: &StoragePaths, root: &Path) -> Result<Vec<PathBuf>, JanitorError> {
+    if !storage.contains_dir(root).await? {
         return Ok(Vec::new());
     }
     let mut dirs = vec![root.to_path_buf()];
@@ -188,6 +202,12 @@ async fn collect_files(root: &Path) -> Result<Vec<PathBuf>, JanitorError> {
                 dirs.push(entry.path());
             } else if ty.is_file() {
                 files.push(entry.path());
+            } else if ty.is_symlink() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "unexpected symlink in retention tree",
+                )
+                .into());
             }
         }
     }

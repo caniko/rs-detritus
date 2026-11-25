@@ -1,0 +1,429 @@
+//! Source purge HTTP and storage contract.
+
+use std::{path::Path, time::Duration};
+
+use detritus_protocol::{
+    GRPC_VERSION_KEY, PROTOCOL_VERSION,
+    otlp::{
+        common::{AnyValue, KeyValue, any_value},
+        logs::{ExportLogsServiceRequest, LogRecord, LogsServiceClient, ResourceLogs, ScopeLogs},
+        resource::Resource,
+    },
+};
+use detritus_server::{
+    RateLimitConfig, RetentionConfig, SchemaRegistry, ServerConfig, TokenStore, serve_with_shutdown,
+};
+use reqwest::{Response, StatusCode};
+use serde_json::{Value, json};
+use tempfile::TempDir;
+use tokio::{fs, net::TcpListener, sync::oneshot, task::JoinHandle};
+
+const PROJECT: &str = "detritus";
+const A: &str = "install-a";
+const B: &str = "install-b";
+const BEARER: &str = "secret-token";
+
+#[tokio::test]
+async fn purge_requires_bearer_capability_and_source_scope() {
+    let ingest = TestServer::start(false, "detritus/").await;
+    assert_eq!(
+        ingest.purge(PROJECT, A, Some(BEARER)).await.status(),
+        StatusCode::FORBIDDEN
+    );
+    let admin = TestServer::start(true, "detritus/install-").await;
+    for token in [None, Some("wrong-token")] {
+        assert_eq!(
+            admin.purge(PROJECT, A, token).await.status(),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    for (project, source) in [("foreign", A), (PROJECT, "outside-prefix")] {
+        assert_eq!(
+            admin.purge(project, source, Some(BEARER)).await.status(),
+            StatusCode::FORBIDDEN
+        );
+    }
+    for bad in ["..", ".", "/", "\\", ""] {
+        for (project, source) in [(PROJECT, bad), (bad, A)] {
+            assert_eq!(
+                admin.purge(project, source, Some(BEARER)).await.status(),
+                StatusCode::BAD_REQUEST
+            );
+        }
+    }
+    for body in ["{", r#"{"project":"detritus"}"#] {
+        assert_eq!(
+            admin
+                .client
+                .post(format!("{}/v1/admin/purge-source", admin.url))
+                .bearer_auth(BEARER)
+                .header("content-type", "application/json")
+                .body(body)
+                .send()
+                .await
+                .expect("purge request")
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    ingest.stop().await;
+    admin.stop().await;
+}
+
+#[tokio::test]
+async fn purge_counts_only_target_files_and_preserves_shared_blobs() {
+    let server = TestServer::start(true, "detritus/").await;
+    let root = server.root.path();
+    let shared_dump = "00-shared-dump";
+    let shared_attachment = "00-shared-attachment";
+    let private_dump = "00-private-dump";
+    let private_attachment = "00-private-attachment";
+    let blob = |hash: &str| root.join(format!("crashes/by-hash/00/{hash}.bin"));
+    let indexes = |source| root.join(format!("crashes/by-source/{PROJECT}/{source}"));
+    let logs = |source| root.join(format!("logs/{PROJECT}/{source}"));
+    let index = |dump: &str, attachment: &str| {
+        serde_json::to_vec(&json!({
+            "dump": {"sha256": dump},
+            "attachments": [{"sha256": attachment}],
+        }))
+        .expect("index JSON")
+    };
+    let kept_index = index(shared_dump, shared_attachment);
+    let first = index(shared_dump, private_attachment);
+    let second = index(private_dump, shared_attachment);
+    write(&indexes(B).join("kept.json"), &kept_index).await;
+    write(&logs(B).join("2026-05-20.ndjson"), b"kept\n").await;
+    write(&indexes(A).join("one.json"), &first).await;
+    write(&indexes(A).join("two.json"), &second).await;
+    write(&logs(A).join("2026-05-19.ndjson"), b"one\n").await;
+    write(&logs(A).join("2026-05-20.ndjson"), b"two\n").await;
+    for hash in [
+        shared_dump,
+        shared_attachment,
+        private_dump,
+        private_attachment,
+    ] {
+        write(&blob(hash), hash.as_bytes()).await;
+    }
+
+    let bytes = first.len() + second.len() + 8 + private_dump.len() + private_attachment.len();
+    assert_eq!(
+        server.purge_ok(A).await,
+        json!({"logs_deleted": 2, "indexes_deleted": 2, "blobs_deleted": 2, "bytes_freed": bytes})
+    );
+    for deleted in [
+        logs(A),
+        indexes(A),
+        blob(private_dump),
+        blob(private_attachment),
+    ] {
+        assert!(!deleted.exists(), "still present: {}", deleted.display());
+    }
+    assert_eq!(
+        fs::read(indexes(B).join("kept.json")).await.unwrap(),
+        kept_index
+    );
+    assert_eq!(
+        fs::read(logs(B).join("2026-05-20.ndjson")).await.unwrap(),
+        b"kept\n"
+    );
+    for hash in [shared_dump, shared_attachment] {
+        assert_eq!(fs::read(blob(hash)).await.unwrap(), hash.as_bytes());
+    }
+
+    let zeros =
+        json!({"logs_deleted": 0, "indexes_deleted": 0, "blobs_deleted": 0, "bytes_freed": 0});
+    assert_eq!(server.purge_ok(A).await, zeros);
+    // A no-op must not report an unrelated orphan as a deletion for this source.
+    write(&blob("00-orphan"), b"orphan").await;
+    assert_eq!(server.purge_ok("unknown").await, zeros);
+    let metrics = server.metrics().await;
+    assert!(metrics.contains("detritus_purge_total{project=\"detritus\",result=\"ok\"} 3"));
+    assert!(
+        metrics.contains("detritus_requests_total{endpoint=\"purge_source\",status=\"200\"} 3")
+    );
+    server.stop().await;
+}
+
+#[tokio::test]
+async fn purge_does_not_sweep_blobs_if_a_surviving_index_cannot_be_read() {
+    let server = TestServer::start(true, "detritus/").await;
+    let root = server.root.path();
+    let blob = root.join("crashes/by-hash/00/00-blob.bin");
+    write(&blob, b"possibly referenced").await;
+    write(
+        &root.join(format!("crashes/by-source/{PROJECT}/{B}/broken.json")),
+        b"{",
+    )
+    .await;
+    write(
+        &root.join(format!("logs/{PROJECT}/{A}/one.ndjson")),
+        b"one\n",
+    )
+    .await;
+    assert_eq!(
+        server.purge(PROJECT, A, Some(BEARER)).await.status(),
+        StatusCode::INTERNAL_SERVER_ERROR
+    );
+    assert!(blob.exists());
+    assert!(
+        server
+            .metrics()
+            .await
+            .contains("detritus_purge_total{project=\"detritus\",result=\"error\"} 1")
+    );
+    server.stop().await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn purge_refuses_a_symlinked_project_directory() {
+    let server = TestServer::start(true, "detritus/").await;
+    let outside = TempDir::new().unwrap();
+    let kept = outside.path().join(format!("{A}/kept.ndjson"));
+    write(&kept, b"outside\n").await;
+    fs::symlink(
+        outside.path(),
+        server.root.path().join(format!("logs/{PROJECT}")),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        server.purge(PROJECT, A, Some(BEARER)).await.status(),
+        StatusCode::INTERNAL_SERVER_ERROR
+    );
+    assert_eq!(fs::read(&kept).await.unwrap(), b"outside\n");
+    server.stop().await;
+}
+
+#[tokio::test]
+async fn purge_closes_the_writer_and_audits_before_it_reopens() {
+    const SOURCE: &str = "audit-source";
+    let audit = tempfile::NamedTempFile::new().expect("audit file");
+    let writer = audit.reopen().expect("audit writer");
+    tracing_subscriber::fmt()
+        .json()
+        .with_writer(writer)
+        .try_init()
+        .expect("audit subscriber");
+    let server = TestServer::start(true, "detritus/").await;
+    let logs = server.root.path().join(format!("logs/{PROJECT}/{SOURCE}"));
+    let mut client = LogsServiceClient::connect(server.url.clone())
+        .await
+        .expect("OTLP connect");
+    client
+        .export(log_request(SOURCE, 1))
+        .await
+        .expect("first export");
+    let stats = server.purge_ok(SOURCE).await;
+    assert_eq!(stats["logs_deleted"], 1);
+    assert!(stats["bytes_freed"].as_u64().unwrap() > 0);
+    assert!(!logs.exists());
+    let events = fs::read_to_string(audit.path()).await.unwrap();
+    let events = events
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .filter(|entry| entry["fields"]["source_id"] == SOURCE)
+        .collect::<Vec<_>>();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["target"], "detritus::audit");
+    assert_eq!(
+        events[0]["fields"],
+        json!({
+            "event": "purge_source",
+            "token_id": "purge-test",
+            "project": PROJECT,
+            "source_id": SOURCE,
+            "logs_deleted": 1,
+            "indexes_deleted": 0,
+            "blobs_deleted": 0,
+            "bytes_freed": stats["bytes_freed"],
+            "result": "ok",
+        })
+    );
+
+    client
+        .export(log_request(SOURCE, 2))
+        .await
+        .expect("second export");
+    drop(client);
+    // Keep the directory alive after graceful shutdown flushes the reopened writer.
+    let TestServer {
+        root,
+        shutdown,
+        task,
+        ..
+    } = server;
+    shutdown.send(()).unwrap();
+    task.await.unwrap().unwrap();
+    let mut entries = fs::read_dir(&logs).await.expect("reopened log directory");
+    let file = entries
+        .next_entry()
+        .await
+        .unwrap()
+        .expect("reopened log file");
+    let data = fs::read_to_string(file.path()).await.unwrap();
+    let line: Value = serde_json::from_str(&data).expect("exactly one NDJSON record");
+    assert_eq!(line["time_unix_nano"], 2);
+    assert!(entries.next_entry().await.unwrap().is_none());
+    drop(root);
+}
+
+fn log_request(source: &str, time_unix_nano: u64) -> tonic::Request<ExportLogsServiceRequest> {
+    let attributes = [
+        ("source.project", PROJECT),
+        ("source.platform", "linux"),
+        ("source.version", "0.1.0"),
+        ("source.install_id", source),
+    ]
+    .into_iter()
+    .map(|(key, value)| KeyValue {
+        key: key.to_owned(),
+        value: Some(AnyValue {
+            value: Some(any_value::Value::StringValue(value.to_owned())),
+        }),
+    })
+    .collect();
+    let mut request = tonic::Request::new(ExportLogsServiceRequest {
+        resource_logs: vec![ResourceLogs {
+            resource: Some(Resource {
+                attributes,
+                ..Resource::default()
+            }),
+            scope_logs: vec![ScopeLogs {
+                log_records: vec![LogRecord {
+                    time_unix_nano,
+                    ..LogRecord::default()
+                }],
+                ..ScopeLogs::default()
+            }],
+            ..ResourceLogs::default()
+        }],
+    });
+    request.metadata_mut().insert(
+        GRPC_VERSION_KEY,
+        PROTOCOL_VERSION.to_string().parse().unwrap(),
+    );
+    request
+        .metadata_mut()
+        .insert("authorization", format!("Bearer {BEARER}").parse().unwrap());
+    request
+}
+
+struct TestServer {
+    root: TempDir,
+    url: String,
+    client: reqwest::Client,
+    shutdown: oneshot::Sender<()>,
+    task: JoinHandle<Result<(), detritus_server::ServerError>>,
+}
+
+impl TestServer {
+    async fn start(can_purge: bool, source_prefix: &str) -> Self {
+        static CRYPTO: std::sync::Once = std::sync::Once::new();
+        CRYPTO.call_once(|| {
+            let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        });
+        let root = TempDir::new().expect("storage");
+        let tokens = root.path().join("tokens.toml");
+        let hash = include_str!("fixtures/legacy-token.phc").trim();
+        let capability = if can_purge { "can_purge = true" } else { "" };
+        let config = format!(
+            "[[token]]\nid = 'purge-test'\nsecret = '{hash}'\nproject = '{PROJECT}'\nsource_prefix = '{source_prefix}'\n{capability}\n",
+        );
+        write(&tokens, config.as_bytes()).await;
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let bind = listener.local_addr().expect("address");
+        let (shutdown, rx) = oneshot::channel();
+        let task = tokio::spawn(serve_with_shutdown(
+            listener,
+            ServerConfig {
+                bind,
+                data_dir: root.path().to_path_buf(),
+                max_dump_bytes: 1024 * 1024,
+                token_store: TokenStore::load(&tokens).await.expect("tokens"),
+                rate_limit: RateLimitConfig {
+                    crashes_burst: 0,
+                    logs_burst: 2,
+                    logs_per_minute: 0,
+                    ..RateLimitConfig::default()
+                },
+                retention: RetentionConfig::default(),
+                schema_registry: SchemaRegistry::empty(),
+            },
+            async {
+                let _ = rx.await;
+            },
+        ));
+        let server = Self {
+            root,
+            url: format!("http://{bind}"),
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .build()
+                .expect("client"),
+            shutdown,
+            task,
+        };
+        tokio::time::timeout(Duration::from_secs(10), async {
+            // Wait for the initial janitor pass before populating fixtures.
+            loop {
+                if server
+                    .metrics()
+                    .await
+                    .contains("detritus_janitor_cycles_total 1")
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("initial janitor pass");
+        server
+    }
+
+    async fn purge(&self, project: &str, install_id: &str, token: Option<&str>) -> Response {
+        let request = self
+            .client
+            .post(format!("{}/v1/admin/purge-source", self.url))
+            .json(&json!({"project": project, "install_id": install_id}));
+        let request = match token {
+            Some(token) => request.bearer_auth(token),
+            None => request,
+        };
+        request.send().await.expect("purge request")
+    }
+
+    async fn purge_ok(&self, install_id: &str) -> Value {
+        let response = self.purge(PROJECT, install_id, Some(BEARER)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        response.json().await.expect("purge response")
+    }
+
+    async fn metrics(&self) -> String {
+        self.client
+            .get(format!("{}/metrics", self.url))
+            .send()
+            .await
+            .expect("metrics")
+            .text()
+            .await
+            .expect("metrics text")
+    }
+
+    async fn stop(self) {
+        self.shutdown.send(()).expect("send shutdown");
+        self.task
+            .await
+            .expect("server task")
+            .expect("server shutdown");
+    }
+}
+
+async fn write(path: &Path, bytes: &[u8]) {
+    fs::create_dir_all(path.parent().expect("parent"))
+        .await
+        .expect("mkdir");
+    fs::write(path, bytes).await.expect("write");
+}

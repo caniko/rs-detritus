@@ -8,7 +8,7 @@ use axum::{
     Json,
     body::Body,
     extract::State,
-    http::{Request, StatusCode, header},
+    http::{HeaderMap, Method, Request, StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -19,7 +19,9 @@ use subtle::ConstantTimeEq;
 use tokio::fs;
 
 use crate::{
+    janitor::JanitorStats,
     metrics::Metrics,
+    purge::{PURGE_SOURCE_PATH, record_purge},
     rate_limit::RateLimitConfig,
     schemas::{ProjectSchemaEntry, SchemaOptions, SchemaRegistry},
     storage::SourceKey,
@@ -33,6 +35,7 @@ pub(crate) struct TokenContext {
     pub(crate) id: String,
     pub(crate) project: String,
     pub(crate) source_prefix: String,
+    pub(crate) can_purge: bool,
     secret_hash: String,
 }
 
@@ -44,6 +47,7 @@ impl std::fmt::Debug for TokenContext {
             .field("id", &self.id)
             .field("project", &self.project)
             .field("source_prefix", &self.source_prefix)
+            .field("can_purge", &self.can_purge)
             .field("secret_hash", &"<redacted>")
             .finish()
     }
@@ -87,25 +91,7 @@ impl TokenStore {
     pub async fn load(path: &Path) -> Result<Self, AuthConfigError> {
         let raw = fs::read_to_string(path).await?;
         let config: TokensConfig = toml::from_str(&raw)?;
-        let mut tokens = Vec::with_capacity(config.token.len());
-        for token in config.token {
-            PasswordHash::new(&token.secret).map_err(|error| AuthConfigError::InvalidHash {
-                id: token.id.clone(),
-                message: error.to_string(),
-            })?;
-            tokens.push(TokenContext {
-                id: token.id,
-                secret_hash: token.secret,
-                project: token.project,
-                source_prefix: token.source_prefix,
-            });
-        }
-        if tokens.is_empty() {
-            return Err(AuthConfigError::NoTokens);
-        }
-        Ok(Self {
-            tokens: Arc::new(tokens),
-        })
+        Self::from_entries(config.token)
     }
 
     /// Creates a token store from pre-hashed entries for tests and harnesses.
@@ -119,6 +105,7 @@ impl TokenStore {
                         secret_hash: token.secret_hash,
                         project: token.project,
                         source_prefix: token.source_prefix,
+                        can_purge: false,
                     })
                     .collect(),
             ),
@@ -248,6 +235,8 @@ struct TokenEntry {
     secret: String,
     project: String,
     source_prefix: String,
+    #[serde(default)]
+    pub(crate) can_purge: bool,
 }
 
 /// One `[[schema]]` entry from a tokens config file.
@@ -310,6 +299,7 @@ impl TokenStore {
                 secret_hash: token.secret,
                 project: token.project,
                 source_prefix: token.source_prefix,
+                can_purge: token.can_purge,
             });
         }
         if tokens.is_empty() {
@@ -339,39 +329,44 @@ pub(crate) async fn auth_middleware(
 
     let endpoint = endpoint_label(path);
     let started = std::time::Instant::now();
-    let Some(header_value) = request.headers().get(header::AUTHORIZATION) else {
-        state
-            .metrics
-            .observe_request(endpoint, "401", started.elapsed());
-        return auth_error(StatusCode::UNAUTHORIZED, "missing bearer token");
-    };
-    let Ok(header_value) = header_value.to_str() else {
-        state
-            .metrics
-            .observe_request(endpoint, "401", started.elapsed());
-        return auth_error(
-            StatusCode::UNAUTHORIZED,
-            "authorization header is not UTF-8",
-        );
-    };
-    let Some(token) = header_value.strip_prefix("Bearer ") else {
-        state
-            .metrics
-            .observe_request(endpoint, "401", started.elapsed());
-        return auth_error(
-            StatusCode::UNAUTHORIZED,
-            "authorization header must use Bearer",
-        );
-    };
-    let Some(context) = state.token_store.authenticate(token) else {
-        state
-            .metrics
-            .observe_request(endpoint, "401", started.elapsed());
-        return auth_error(StatusCode::UNAUTHORIZED, "invalid bearer token");
+    let context = match authenticate_request(&state.token_store, request.headers()) {
+        Ok(context) => context,
+        Err(message) => {
+            let status = StatusCode::UNAUTHORIZED;
+            if path == PURGE_SOURCE_PATH && request.method() == Method::POST {
+                record_purge(
+                    &state.metrics,
+                    None,
+                    None,
+                    status,
+                    started,
+                    &JanitorStats::default(),
+                );
+            } else {
+                state
+                    .metrics
+                    .observe_request(endpoint, status.as_str(), started.elapsed());
+            }
+            return error_response(status, message);
+        }
     };
 
     request.extensions_mut().insert(context);
     next.run(request).await
+}
+
+fn authenticate_request(
+    store: &TokenStore,
+    headers: &HeaderMap,
+) -> Result<TokenContext, &'static str> {
+    let token = headers
+        .get(header::AUTHORIZATION)
+        .ok_or("missing bearer token")?
+        .to_str()
+        .map_err(|_| "authorization header is not UTF-8")?
+        .strip_prefix("Bearer ")
+        .ok_or("authorization header must use Bearer")?;
+    store.authenticate(token).ok_or("invalid bearer token")
 }
 
 #[allow(clippy::result_large_err)]
@@ -387,6 +382,8 @@ pub(crate) fn token_from_extensions(
 pub(crate) fn endpoint_label(path: &str) -> &'static str {
     if path == "/v1/crashes" {
         "crashes"
+    } else if path == PURGE_SOURCE_PATH {
+        "purge_source"
     } else if path == "/opentelemetry.proto.collector.logs.v1.LogsService/Export" {
         "logs"
     } else if path == "/metrics" {
@@ -398,7 +395,7 @@ pub(crate) fn endpoint_label(path: &str) -> &'static str {
     }
 }
 
-fn auth_error(status: StatusCode, message: &str) -> Response {
+pub(crate) fn error_response(status: StatusCode, message: &str) -> Response {
     (
         status,
         Json(json!({

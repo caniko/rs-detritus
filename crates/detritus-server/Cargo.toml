@@ -52,6 +52,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.11.0"
 subtle = "2.6.1"
+tempfile = "3.27.0"
 thiserror = { workspace = true }
 tokio = { workspace = true, features = [
   "rt-multi-thread",
@@ -87,7 +88,6 @@ uuid = { workspace = true }
 [dev-dependencies]
 filetime = "0.2.29"
 reqwest = { workspace = true, features = ["json", "multipart"] }
-tempfile = "3.27.0"
 zstd = { workspace = true }
 
 [package.metadata.docs.rs]

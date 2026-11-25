@@ -1,14 +1,15 @@
-use std::{future::Future, net::SocketAddr, path::PathBuf};
+use std::{future::Future, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     http::{StatusCode, header},
     middleware,
     response::IntoResponse,
     routing::{get, post},
 };
 use detritus_protocol::otlp::logs::LogsServiceServer;
-use tokio::net::TcpListener;
+use tokio::{net::TcpListener, sync::Mutex};
 use tonic::codec::CompressionEncoding;
 use tonic::service::Routes;
 use tower::ServiceBuilder;
@@ -27,6 +28,7 @@ use crate::{
     janitor::{RetentionConfig, spawn_janitor},
     logs::{LogWriterPool, LogsHandler},
     metrics::Metrics,
+    purge::{PURGE_SOURCE_PATH, purge_source},
     rate_limit::{RateLimitConfig, RateLimiter},
     schemas::SchemaRegistry,
     storage::{StorageError, StoragePaths},
@@ -74,6 +76,8 @@ pub(crate) struct AppState {
     pub(crate) rate_limiter: RateLimiter,
     pub(crate) metrics: Metrics,
     pub(crate) schema_registry: SchemaRegistry,
+    pub(crate) writers: LogWriterPool,
+    pub(crate) maintenance: Arc<Mutex<()>>,
 }
 
 /// Runs a Detritus server until the process receives Ctrl-C or, on Unix, SIGTERM.
@@ -130,15 +134,26 @@ pub async fn serve_with_shutdown(
     let metrics = Metrics::new()?;
     let rate_limiter = RateLimiter::new(config.rate_limit);
     let writers = LogWriterPool::new(storage.clone());
-    let janitor = spawn_janitor(storage.clone(), config.retention, metrics.clone());
+    // ponytail: one storage lock delays publication during a full sweep;
+    // use finer-grained locking and reference tracking if sweeps get slow.
+    let maintenance = Arc::new(Mutex::new(()));
+    let janitor = spawn_janitor(
+        storage.clone(),
+        config.retention,
+        metrics.clone(),
+        maintenance.clone(),
+    );
     let app = app(
-        storage,
-        writers.clone(),
-        config.max_dump_bytes,
+        AppState {
+            storage,
+            max_dump_bytes: config.max_dump_bytes,
+            rate_limiter,
+            metrics,
+            schema_registry: config.schema_registry,
+            writers: writers.clone(),
+            maintenance: maintenance.clone(),
+        },
         config.token_store,
-        rate_limiter,
-        metrics,
-        config.schema_registry,
     );
     let addr = listener.local_addr()?;
     tracing::info!(%addr, "observability server listening");
@@ -147,33 +162,20 @@ pub async fn serve_with_shutdown(
         .with_graceful_shutdown(shutdown)
         .await;
     janitor.abort();
+    let _guard = maintenance.lock().await;
     writers.shutdown().await;
     result?;
     Ok(())
 }
 
-fn app(
-    storage: StoragePaths,
-    writers: LogWriterPool,
-    max_dump_bytes: u64,
-    token_store: TokenStore,
-    rate_limiter: RateLimiter,
-    metrics: Metrics,
-    schema_registry: SchemaRegistry,
-) -> Router {
-    let state = AppState {
-        storage,
-        max_dump_bytes,
-        rate_limiter,
-        metrics: metrics.clone(),
-        schema_registry,
-    };
+fn app(state: AppState, token_store: TokenStore) -> Router {
     let grpc = Routes::new(
         LogsServiceServer::new(LogsHandler::new(
-            writers,
+            state.writers.clone(),
             state.rate_limiter.clone(),
             state.metrics.clone(),
             state.schema_registry.clone(),
+            state.maintenance.clone(),
         ))
         .accept_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Zstd)
@@ -181,15 +183,19 @@ fn app(
         .send_compressed(CompressionEncoding::Zstd),
     )
     .into_axum_router();
+    let auth_state = AuthState {
+        token_store,
+        metrics: state.metrics.clone(),
+    };
     let http = Router::new()
         .route("/v1/crashes", post(crashes_handler))
+        .route(
+            PURGE_SOURCE_PATH,
+            post(purge_source).layer(DefaultBodyLimit::max(4096)),
+        )
         .route("/healthz", get(healthz))
         .route("/metrics", get(render_metrics))
         .with_state(state);
-    let auth_state = AuthState {
-        token_store,
-        metrics,
-    };
 
     http.merge(grpc)
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))

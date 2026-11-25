@@ -1,6 +1,6 @@
 use std::{
     io,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use chrono::NaiveDate;
@@ -43,6 +43,36 @@ impl StoragePaths {
         &self.data_dir
     }
 
+    pub(crate) async fn contains_dir(&self, path: &Path) -> io::Result<bool> {
+        // Trust the configured root, but never follow a symlink below it.
+        let mut dir = self.data_dir.clone();
+        for part in path
+            .strip_prefix(&dir)
+            .map_err(io::Error::other)?
+            .components()
+        {
+            let Component::Normal(name) = part else {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "invalid storage path",
+                ));
+            };
+            dir.push(name);
+            match fs::symlink_metadata(&dir).await {
+                Ok(meta) if meta.is_dir() => {}
+                Ok(_) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "invalid storage directory",
+                    ));
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(true)
+    }
+
     /// Creates the base storage directory tree.
     ///
     /// # Errors
@@ -61,11 +91,14 @@ impl StoragePaths {
     }
 
     pub(crate) fn log_file(&self, source: &SourceKey, date: NaiveDate) -> PathBuf {
+        self.source_logs_dir(source).join(format!("{date}.ndjson"))
+    }
+
+    pub(crate) fn source_logs_dir(&self, source: &SourceKey) -> PathBuf {
         self.data_dir
             .join("logs")
             .join(&source.project)
             .join(&source.source_id)
-            .join(format!("{date}.ndjson"))
     }
 
     pub(crate) fn blob_path(&self, sha256: &str) -> PathBuf {
@@ -82,12 +115,16 @@ impl StoragePaths {
     }
 
     pub(crate) fn index_path(&self, source: &SourceKey, timestamp: &str, sha256: &str) -> PathBuf {
+        self.source_indexes_dir(source)
+            .join(format!("{timestamp}-{sha256}.json"))
+    }
+
+    pub(crate) fn source_indexes_dir(&self, source: &SourceKey) -> PathBuf {
         self.data_dir
             .join("crashes")
             .join("by-source")
             .join(&source.project)
             .join(&source.source_id)
-            .join(format!("{timestamp}-{sha256}.json"))
     }
 
     pub(crate) fn relative_to_data_dir<'a>(&self, path: &'a Path) -> &'a Path {
@@ -109,11 +146,11 @@ pub enum StorageError {
 }
 
 pub(crate) fn validate_component(name: &'static str, value: &str) -> Result<(), StorageError> {
-    let invalid = value.is_empty()
-        || value == "."
-        || value == ".."
-        || value.contains('/')
-        || value.contains('\\');
+    let invalid = value.contains(['/', '\\', '\0'])
+        || !matches!(
+            Path::new(value).components().next(),
+            Some(Component::Normal(_))
+        );
     if invalid {
         Err(StorageError::InvalidComponent {
             name,

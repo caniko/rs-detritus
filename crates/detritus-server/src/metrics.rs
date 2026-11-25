@@ -13,6 +13,7 @@ pub(crate) struct Metrics {
 struct MetricsInner {
     registry: Registry,
     requests_total: IntCounterVec,
+    purge_total: IntCounterVec,
     request_duration_seconds: HistogramVec,
     bytes_ingested_total: IntCounterVec,
     dedup_hits_total: IntCounter,
@@ -43,6 +44,13 @@ impl Metrics {
                 "Request duration by endpoint.",
             ),
             &["endpoint"],
+        )?;
+        let purge_total = IntCounterVec::new(
+            Opts::new(
+                "detritus_purge_total",
+                "Source purge requests by project and result.",
+            ),
+            &["project", "result"],
         )?;
         let bytes_ingested_total = IntCounterVec::new(
             Opts::new(
@@ -102,6 +110,7 @@ impl Metrics {
         )?;
 
         registry.register(Box::new(requests_total.clone()))?;
+        registry.register(Box::new(purge_total.clone()))?;
         registry.register(Box::new(request_duration_seconds.clone()))?;
         registry.register(Box::new(bytes_ingested_total.clone()))?;
         registry.register(Box::new(dedup_hits_total.clone()))?;
@@ -121,6 +130,7 @@ impl Metrics {
             inner: Arc::new(MetricsInner {
                 registry,
                 requests_total,
+                purge_total,
                 request_duration_seconds,
                 bytes_ingested_total,
                 dedup_hits_total,
@@ -146,6 +156,13 @@ impl Metrics {
             .request_duration_seconds
             .with_label_values(&[endpoint])
             .observe(duration.as_secs_f64());
+    }
+
+    pub(crate) fn observe_purge(&self, project: &str, result: &str) {
+        self.inner
+            .purge_total
+            .with_label_values(&[project, result])
+            .inc();
     }
 
     pub(crate) fn observe_bytes(&self, endpoint: &str, bytes: u64) {

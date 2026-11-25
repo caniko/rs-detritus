@@ -14,6 +14,7 @@ mod crashes;
 mod janitor;
 mod logs;
 mod metrics;
+mod purge;
 mod rate_limit;
 mod schemas;
 mod server;

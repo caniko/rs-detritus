@@ -213,6 +213,7 @@ async fn utf8_schema_errors_are_bounded_without_panicking_or_writing_records() {
         RateLimiter::new(crate::RateLimitConfig::default()),
         Metrics::new().unwrap(),
         registry,
+        Arc::default(),
     );
     let mut resource = resource_logs();
     resource.resource.as_mut().unwrap().attributes[2] = attr(

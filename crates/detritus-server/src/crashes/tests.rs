@@ -37,6 +37,7 @@ async fn setup(root: &std::path::Path) -> (AppState, TokenContext, Vec<u8>) {
     );
     (
         AppState {
+            writers: crate::logs::LogWriterPool::new(storage.clone()),
             storage,
             max_dump_bytes: 100,
             rate_limiter: RateLimiter::new(RateLimitConfig {
@@ -45,6 +46,7 @@ async fn setup(root: &std::path::Path) -> (AppState, TokenContext, Vec<u8>) {
             }),
             metrics: Metrics::new().unwrap(),
             schema_registry: SchemaRegistry::empty(),
+            maintenance: std::sync::Arc::default(),
         },
         token,
         serde_json::to_vec(&metadata).unwrap(),
@@ -73,6 +75,62 @@ fn headers() -> HeaderMap {
         "multipart/form-data; boundary=test".parse().unwrap(),
     );
     headers
+}
+
+#[tokio::test]
+async fn staged_crash_can_finish_after_a_sweep() {
+    let dir = tempfile::tempdir().unwrap();
+    let (state, token, metadata) = setup(dir.path()).await;
+    let guard = state.maintenance.lock().await;
+    let upload = crashes_inner(
+        &state,
+        &token,
+        headers(),
+        body(&[
+            (Some("metadata"), &metadata),
+            (Some("dump"), b"dump"),
+            (Some("attach:context"), b"context"),
+        ]),
+    );
+    tokio::pin!(upload);
+    tokio::select! {
+        result = &mut upload => panic!("published while the maintenance lock was held: {result:?}"),
+        result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let mut staging = fs::read_dir(state.storage.tmp_dir()).await.unwrap();
+                if let Some(upload_dir) = staging.next_entry().await.unwrap() {
+                    let mut parts = fs::read_dir(upload_dir.path()).await.unwrap();
+                    if parts.next_entry().await.unwrap().is_some()
+                        && parts.next_entry().await.unwrap().is_some()
+                    {
+                        break;
+                    }
+                }
+                tokio::task::yield_now().await;
+            }
+        }) => result.expect("upload did not stage its dump and attachment"),
+    }
+
+    let dump_path = state
+        .storage
+        .blob_path(&hex::encode(Sha256::digest(b"dump")));
+    let attachment_path = state
+        .storage
+        .blob_path(&hex::encode(Sha256::digest(b"context")));
+    assert!(!dump_path.exists() && !attachment_path.exists());
+    let mut stats = crate::JanitorStats::default();
+    crate::janitor::sweep_unreferenced_blobs(&state.storage, None, &mut stats)
+        .await
+        .unwrap();
+    assert_eq!(stats.blobs_deleted, 0);
+    drop(guard);
+    assert_eq!(upload.await.unwrap().0, StatusCode::CREATED);
+    crate::janitor::sweep_unreferenced_blobs(&state.storage, None, &mut stats)
+        .await
+        .unwrap();
+    assert_eq!(stats.blobs_deleted, 0);
+    assert_eq!(fs::read(dump_path).await.unwrap(), b"dump");
+    assert_eq!(fs::read(attachment_path).await.unwrap(), b"context");
 }
 
 #[tokio::test]

@@ -39,6 +39,7 @@ pub(crate) struct LogsHandler {
     rate_limiter: RateLimiter,
     metrics: Metrics,
     schema_registry: SchemaRegistry,
+    maintenance: Arc<Mutex<()>>,
 }
 
 impl LogsHandler {
@@ -47,12 +48,14 @@ impl LogsHandler {
         rate_limiter: RateLimiter,
         metrics: Metrics,
         schema_registry: SchemaRegistry,
+        maintenance: Arc<Mutex<()>>,
     ) -> Self {
         Self {
             writers,
             rate_limiter,
             metrics,
             schema_registry,
+            maintenance,
         }
     }
 }
@@ -133,6 +136,8 @@ impl LogsHandler {
                 .check_logs(&token, &source)
                 .await
                 .map_err(|_| Status::resource_exhausted("log rate limit exceeded"))?;
+            // Don't reopen a writer while purge is draining and deleting it.
+            let _guard = self.maintenance.lock().await;
             let sender = self.writers.sender_for(source.clone()).await?;
             for scope_logs in resource_logs.scope_logs {
                 for record in scope_logs.log_records {
@@ -214,6 +219,16 @@ impl LogWriterPool {
             },
         );
         Ok(sender)
+    }
+
+    pub(crate) async fn close_source(&self, source: &SourceKey) {
+        let handle = self.inner.lock().await.remove(source);
+        if let Some(WriterHandle { sender, join }) = handle {
+            drop(sender);
+            if let Err(error) = join.await {
+                tracing::error!(%error, ?source, "log writer task panicked during purge");
+            }
+        }
     }
 
     pub(crate) async fn shutdown(&self) {

@@ -1,4 +1,7 @@
-use std::{io, path::PathBuf};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use axum::{
     Extension, Json,
@@ -14,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use tokio::{fs, io::AsyncWriteExt};
+use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -139,6 +143,9 @@ async fn crashes_inner(
         return Err(CrashError::from_schema_error(schema_err));
     }
 
+    // Read the request into private staging before taking the maintenance lock
+    // so slow uploads cannot block purges or retention sweeps.
+    let staging = tempfile::tempdir_in(state.storage.tmp_dir())?;
     let mut dump = None;
     let mut attachments = Vec::new();
 
@@ -159,7 +166,7 @@ async fn crashes_inner(
                         "dump part must appear exactly once".to_owned(),
                     ));
                 }
-                dump = Some(write_part_to_blob(&state.storage, field, state.max_dump_bytes).await?);
+                dump = Some(stage_blob(staging.path(), field, state.max_dump_bytes).await?);
             }
             name if name.starts_with("attach:") => {
                 let key = name
@@ -170,9 +177,27 @@ async fn crashes_inner(
                     || "application/octet-stream".to_owned(),
                     ToString::to_string,
                 );
-                let pointer =
-                    write_part_to_blob(&state.storage, field, state.max_dump_bytes).await?;
-                attachments.push(AttachmentPointer {
+                let blob = stage_blob(staging.path(), field, state.max_dump_bytes).await?;
+                attachments.push((key, content_type, blob));
+            }
+            _ => return Err(CrashError::BadRequest(format!("unexpected part `{name}`"))),
+        }
+    }
+
+    let dump = dump.ok_or(CrashError::MissingPart("dump"))?;
+    let guard = state.maintenance.clone().lock_owned().await;
+    let storage = state.storage.clone();
+    let dump = tokio::spawn(
+        async move {
+            // Publish blobs and their index within the same lock, including if
+            // the client disconnects. A blob snapshot alone misses this race.
+            let _guard = guard;
+            let _staging = staging;
+            let dump = dump.publish(&storage).await?;
+            let mut pointers = Vec::with_capacity(attachments.len());
+            for (key, content_type, blob) in attachments {
+                let pointer = blob.publish(&storage).await?;
+                pointers.push(AttachmentPointer {
                     key,
                     content_type,
                     sha256: pointer.sha256,
@@ -182,17 +207,18 @@ async fn crashes_inner(
                     content_encoding: pointer.content_encoding,
                 });
             }
-            _ => return Err(CrashError::BadRequest(format!("unexpected part `{name}`"))),
+            write_index(&storage, &source, metadata, &dump, pointers).await?;
+            Ok::<_, CrashError>(dump)
         }
-    }
+        .in_current_span(),
+    )
+    .await
+    .map_err(|error| CrashError::Internal(error.to_string()))??;
 
-    let dump = dump.ok_or(CrashError::MissingPart("dump"))?;
     state.metrics.observe_bytes("crashes", dump.len);
     if dump.dedup {
         state.metrics.observe_dedup_hit();
     }
-    write_index(&state.storage, &source, metadata, &dump, attachments).await?;
-
     Ok((
         StatusCode::CREATED,
         Json(CrashResponse {
@@ -216,11 +242,31 @@ async fn read_metadata(mut field: Field<'_>) -> Result<CrashMetadata, CrashError
     Ok(serde_json::from_slice(&bytes)?)
 }
 
-async fn write_part_to_blob(
-    storage: &StoragePaths,
+struct StagedBlob {
+    tmp_path: PathBuf,
+    sha256: String,
+    len: u64,
+    content_encoding: Option<String>,
+}
+
+impl StagedBlob {
+    async fn publish(self, storage: &StoragePaths) -> Result<BlobPointer, CrashError> {
+        let (path, dedup) = finalize_blob(storage, self.tmp_path, &self.sha256).await?;
+        Ok(BlobPointer {
+            sha256: self.sha256,
+            len: self.len,
+            path,
+            dedup,
+            content_encoding: self.content_encoding,
+        })
+    }
+}
+
+async fn stage_blob(
+    staging: &Path,
     mut field: Field<'_>,
     max_bytes: u64,
-) -> Result<BlobPointer, CrashError> {
+) -> Result<StagedBlob, CrashError> {
     // Capture Content-Encoding before consuming the field body.
     let content_encoding = field
         .headers()
@@ -228,16 +274,14 @@ async fn write_part_to_blob(
         .and_then(|v| v.to_str().ok())
         .map(str::to_owned);
 
-    fs::create_dir_all(storage.tmp_dir()).await?;
-    let temp_path = storage.tmp_dir().join(format!("{}.tmp", Uuid::new_v4()));
-    let mut file = fs::File::create(&temp_path).await?;
+    let tmp_path = staging.join(format!("{}.tmp", Uuid::new_v4()));
+    let mut file = fs::File::create(&tmp_path).await?;
     let mut hasher = Sha256::new();
     let mut len = 0_u64;
 
     while let Some(chunk) = field.chunk().await? {
         len += chunk.len() as u64;
         if len > max_bytes {
-            let _ = fs::remove_file(&temp_path).await;
             return Err(CrashError::PayloadTooLarge { max: max_bytes });
         }
         hasher.update(&chunk);
@@ -246,15 +290,10 @@ async fn write_part_to_blob(
 
     file.flush().await?;
     file.sync_all().await?;
-    drop(file);
-
-    let sha256 = hex::encode(hasher.finalize());
-    let (path, dedup) = finalize_blob(storage, temp_path, &sha256).await?;
-    Ok(BlobPointer {
-        sha256,
+    Ok(StagedBlob {
+        tmp_path,
+        sha256: hex::encode(hasher.finalize()),
         len,
-        path,
-        dedup,
         content_encoding,
     })
 }
